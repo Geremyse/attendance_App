@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Классы</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Классы</h1>
+        <form method="POST" class="space-y-4">
+            <div>
+                <label for="class_name" class="block text-gray-700 text-sm font-bold mb-2">Название класса:</label>
+                <input type="text" id="class_name" name="class_name" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            </div>
+            <div>
+                <input type="submit" value="Добавить класс" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            </div>
+        </form>
+        <table class="min-w-full bg-white mt-6">
+            <thead>
+                <tr>
+                    <th class="py-2 px-4 border-b">Название класса</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for class in classes %}
+                <tr>
+                    <td class="py-2 px-4 border-b">{{ class[1] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <a href="{{ url_for('admin_dashboard') }}" class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
+    </div>
+</body>
+</html>

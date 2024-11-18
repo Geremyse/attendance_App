@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Attendance System</h1>
+        <table id="attendanceTable" class="min-w-full bg-white mt-6">
+            <thead>
+                <tr>
+                    <th class="py-2 px-4 border-b">Student Name</th>
+                    <th class="py-2 px-4 border-b">Attendance Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in attendance_data %}
+                <tr>
+                    <td class="py-2 px-4 border-b">{{ row[0] }}</td>
+                    <td class="py-2 px-4 border-b">{{ row[1] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="flex justify-center space-x-4 mt-6">
+            <button onclick="capture()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Capture Attendance</button>
+            <button onclick="stopCapture()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Stop Capture</button>
+        </div>
+        <a href="{{ url_for('logout') }}" class="block text-center text-blue-500 hover:underline mt-4">Logout</a>
+        <canvas id="videoCanvas" width="640" height="480" class="mt-6"></canvas>
+    </div>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('videoCanvas');
+        const context = canvas.getContext('2d');
+        const image = new Image();
+
+        socket.on('frame', function(data) {
+            image.src = 'data:image/jpeg;base64,' + data.image;
+            image.onload = function() {
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            };
+        });
+
+        socket.on('attendance_update', function(data) {
+            const tableBody = document.getElementById('attendanceTable').getElementsByTagName('tbody')[0];
+            tableBody.innerHTML = '';
+            data.data.forEach(record => {
+                const row = document.createElement('tr');
+                const nameCell = document.createElement('td');
+                const timeCell = document.createElement('td');
+                nameCell.textContent = record[0];
+                timeCell.textContent = record[1];
+                row.appendChild(nameCell);
+                row.appendChild(timeCell);
+                tableBody.appendChild(row);
+            });
+        });
+
+        function capture() {
+            fetch('/capture')
+                .then(response => response.json())
+                .then(data => alert(data.status));
+        }
+
+        function stopCapture() {
+            fetch('/stop_capture')
+                .then(response => response.json())
+                .then(data => alert(data.status));
+        }
+
+        // Запрос обновлений данных о посещаемости при подключении
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            socket.emit('get_attendance_updates');
+        });
+    </script>
+</body>
+</html>

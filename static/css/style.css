@@ -1,0 +1,119 @@
+/* Основные стили для тела документа */
+body {
+    font-family: 'Prata', sans-serif; /* Шрифт для всего тела документа */
+}
+
+/* Стили для заголовка первого уровня */
+h1 {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Тень текста */
+    letter-spacing: 1px; /* Межбуквенный интервал */
+}
+
+/* Стили для кнопок */
+button {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Тень текста */
+    letter-spacing: 1px; /* Межбуквенный интервал */
+    font-weight: 600; /* Чуть более жирный текст */
+}
+
+/* Стили для контейнера */
+.container {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+}
+
+/* Стили для ссылки выхода из системы */
+.logout {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Тень текста */
+    letter-spacing: 1px; /* Межбуквенный интервал */
+    font-weight: 600; /* Чуть более жирный текст */
+}
+
+/* Стили для ссылки добавления ученика */
+.add_student {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Тень текста */
+    letter-spacing: 1px; /* Межбуквенный интервал */
+    font-weight: 600; /* Чуть более жирный текст */
+}
+
+/* Стили для ссылок */
+a {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Тень текста */
+    letter-spacing: 1px; /* Межбуквенный интервал */
+    font-weight: 600; /* Чуть более жирный текст */
+}
+
+/* Стили для формы */
+form {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+}
+
+/* Стили для меток в форме */
+form label {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1); /* Тень текста */
+    letter-spacing: 0.5px; /* Межбуквенный интервал */
+    font-weight: 850; /* Чуть более жирный текст */
+}
+
+/* Стили для текстовых полей и полей пароля в форме */
+form input[type="text"],
+form input[type="password"] {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1); /* Тень текста */
+    letter-spacing: 0.5px; /* Межбуквенный интервал */
+    font-weight: 750; /* Чуть более жирный текст */
+}
+
+/* Стили для кнопки отправки в форме */
+form input[type="submit"] {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3); /* Тень текста */
+    letter-spacing: 1px; /* Межбуквенный интервал */
+    font-weight: 700; /* Чуть более жирный текст */
+}
+
+/* Стили для абзацев */
+p {
+    font-family: 'Prata', sans-serif; /* Шрифт */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1); /* Тень текста */
+    letter-spacing: 0.5px; /* Межбуквенный интервал */
+    font-weight: 600; /* Чуть более жирный текст */
+}
+
+/* Стили для уведомлений */
+.alert {
+    padding: 10px 20px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    font-weight: bold;
+}
+
+.alert-success {
+    color: #155724;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+}
+
+.alert-danger {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+
+.alert-info {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+
+.alert-warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+}

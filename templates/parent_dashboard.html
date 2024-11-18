@@ -1,18 +1,6 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панель родителя</title>
-    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="bg-gray-100 text-gray-800 font-sans">
-    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
-        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Панель родителя</h1>
-        <!-- Панель родителя -->
-        <a href="{{ url_for('logout') }}" class="block text-center text-blue-500 hover:underline mt-4">Logout</a>
-    </div>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+    <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Панель родителя</h1>
+    <a href="{{ url_for('logout') }}" class="block text-center text-blue-500 hover:underline mt-4">Выйти из системы</a>
+{% endblock %}

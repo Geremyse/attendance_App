@@ -1,64 +1,60 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Учителя</title>
-    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        .sort-icon {
-            cursor: pointer;
-            margin-left: 5px;
-            width: 16px;
-            height: 16px;
-        }
-        .filter-checkbox {
-            margin-right: 10px;
-        }
-    </style>
-    <script>
-        $(document).ready(function() {
-            // Сортировка
-            $('.sort-icon').click(function() {
-                var table = $(this).parents('table').eq(0);
-                var index = $(this).data('index');
-                var rows = table.find('tr:gt(0)').toArray().sort(comparer(index));
-                var asc = $(this).hasClass('asc');
-                if (asc) {
-                    rows = rows.reverse();
-                }
-                for (var i = 0; i < rows.length; i++) {
-                    table.append(rows[i]);
-                }
-                $(this).toggleClass('asc');
-                $(this).text(asc ? '↓' : '↑');
-            });
+{% extends "base.html" %}
 
-            function comparer(index) {
-                return function(a, b) {
-                    var valA = getCellValue(a, index), valB = getCellValue(b, index);
-                    return parseFloat(valA) && parseFloat(valB) ? parseFloat(valA) - parseFloat(valB) : valA.toString().localeCompare(valB);
-                };
+{% block content %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<style>
+    .sort-icon {
+        cursor: pointer;
+        margin-left: 5px;
+        width: 16px;
+        height: 16px;
+    }
+
+    .filter-checkbox {
+        margin-right: 10px;
+    }
+</style>
+<script>
+    $(document).ready(function () {
+        // Сортировка
+        $('.sort-icon').click(function () {
+            var table = $(this).parents('table').eq(0);
+            var index = $(this).data('index');
+            var rows = table.find('tr:gt(0)').toArray().sort(comparer(index));
+            var asc = $(this).hasClass('asc');
+            if (asc) {
+                rows = rows.reverse();
             }
-
-            function getCellValue(row, index) { return $(row).children('td').eq(index).text(); }
-
-            // Фильтрация
-            $('.filter-checkbox').change(function() {
-                var table = $('table');
-                var index = $(this).data('index');
-                var isChecked = $(this).is(':checked');
-                table.find('tr').each(function() {
-                    $(this).find('td').eq(index).toggle(isChecked);
-                });
-                table.find('th').eq(index).toggle(isChecked);
-            });
+            for (var i = 0; i < rows.length; i++) {
+                table.append(rows[i]);
+            }
+            $(this).toggleClass('asc');
+            $(this).text(asc ? '↓' : '↑');
         });
-    </script>
+
+        function comparer(index) {
+            return function (a, b) {
+                var valA = getCellValue(a, index), valB = getCellValue(b, index);
+                return parseFloat(valA) && parseFloat(valB) ? parseFloat(valA) - parseFloat(valB) : valA.toString().localeCompare(valB);
+            };
+        }
+
+        function getCellValue(row, index) { return $(row).children('td').eq(index).text(); }
+
+        // Фильтрация
+        $('.filter-checkbox').change(function () {
+            var table = $('table');
+            var index = $(this).data('index');
+            var isChecked = $(this).is(':checked');
+            table.find('tr').each(function () {
+                $(this).find('td').eq(index).toggle(isChecked);
+            });
+            table.find('th').eq(index).toggle(isChecked);
+        });
+    });
+</script>
 </head>
+
 <body class="bg-gray-100 text-gray-800 font-sans">
     <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
         <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Учителя</h1>
@@ -66,34 +62,42 @@
             {{ form.hidden_tag() }}
             <div>
                 {{ form.last_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.last_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.last_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.first_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.first_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.first_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.middle_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.middle_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.middle_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.username.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.username(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.username(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.password.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.password(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.password(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.confirm_password.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.confirm_password(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.confirm_password(size=20, class="shadow appearance-none border rounded w-full py-2 px-3
+                text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.class_id.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.class_id(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.class_id(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
-                {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline") }}
+                {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded
+                focus:outline-none focus:shadow-outline") }}
             </div>
         </form>
         <table class="min-w-full bg-white mt-6">
@@ -114,9 +118,13 @@
                     <td class="py-2 px-4 border-b">{{ teacher[3] }}</td>
                     <td class="py-2 px-4 border-b">{{ teacher[8] }}</td>
                     <td class="py-2 px-4 border-b">
-                        <a href="{{ url_for('edit_teacher', teacher_id=teacher[0]) }}" class="text-blue-500 hover:underline">Редактировать</a>
-                        <form action="{{ url_for('delete_teacher', teacher_id=teacher[0]) }}" method="POST" style="display:inline;">
-                            <button type="submit" onclick="return confirm('Вы уверены, что хотите удалить этого учителя?')" class="text-red-500 hover:underline">Удалить</button>
+                        <a href="{{ url_for('edit_teacher', teacher_id=teacher[0]) }}"
+                            class="text-blue-500 hover:underline">Редактировать</a>
+                        <form action="{{ url_for('delete_teacher', teacher_id=teacher[0]) }}" method="POST"
+                            style="display:inline;">
+                            <button type="submit"
+                                onclick="return confirm('Вы уверены, что хотите удалить этого учителя?')"
+                                class="text-red-500 hover:underline">Удалить</button>
                         </form>
                     </td>
                 </tr>
@@ -130,7 +138,6 @@
             <label><input type="checkbox" class="filter-checkbox" data-index="3" checked> Класс</label>
             <label><input type="checkbox" class="filter-checkbox" data-index="4" checked> Действия</label>
         </div>
-        <a href="{{ url_for('admin_dashboard') }}" class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
-    </div>
-</body>
-</html>
+        <a href="{{ url_for('admin_dashboard') }}"
+            class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
+        {% endblock %}

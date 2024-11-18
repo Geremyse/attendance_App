@@ -1,17 +1,14 @@
-# Помечаем все файлы с расширением .py как текстовые
-*.py text
-
 # Помечаем все файлы с расширением .html как текстовые
-*.html text
+*.html linguist-generated
+
 
 # Помечаем все файлы с расширением .css как текстовые
-*.css text
+*.css linguist-generated
 
-# Помечаем все файлы с расширением .jpg как бинарные
-*.jpg binary
 
 # Помечаем все файлы с расширением .xml как текстовые
-*.xml text
+*.xml linguist-generated
+
 
 # Помечаем все файлы в директории dist как сгенерированные
-dist/* linguist-generated
+*.py linguist-generated

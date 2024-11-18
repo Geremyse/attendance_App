@@ -17,10 +17,12 @@ class RegisterForm(FlaskForm):
 
 
 class AddStudentForm(FlaskForm):
-    name = StringField('ФИО ученика', validators=[DataRequired(), Length(min=1, max=255)])
+    last_name = StringField('Фамилия', validators=[DataRequired(), Length(min=1, max=255)])
+    first_name = StringField('Имя', validators=[DataRequired(), Length(min=1, max=255)])
+    middle_name = StringField('Отчество', validators=[DataRequired(), Length(min=1, max=255)])
     class_id = SelectField('Класс', coerce=int, validators=[DataRequired()])
-    photo = FileField('Фотография', validators=[DataRequired()])
-    submit = SubmitField('Добавить студента')
+    photo = FileField('Фото', validators=[DataRequired()])
+    submit = SubmitField('Добавить')
 
 
 class TeacherRegistrationForm(FlaskForm):

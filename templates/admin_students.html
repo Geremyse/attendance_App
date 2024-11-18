@@ -1,32 +1,26 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ученики</title>
-    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('th').click(function() {
-                var table = $(this).parents('table').eq(0)
-                var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
-                this.asc = !this.asc
-                if (!this.asc) { rows = rows.reverse() }
-                for (var i = 0; i < rows.length; i++) { table.append(rows[i]) }
-            })
-            function comparer(index) {
-                return function(a, b) {
-                    var valA = getCellValue(a, index), valB = getCellValue(b, index)
-                    return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
-                }
-            }
-            function getCellValue(row, index) { return $(row).children('td').eq(index).text() }
+{% extends "base.html" %}
+
+{% block content %}
+<script>
+    $(document).ready(function () {
+        $('th').click(function () {
+            var table = $(this).parents('table').eq(0)
+            var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
+            this.asc = !this.asc
+            if (!this.asc) { rows = rows.reverse() }
+            for (var i = 0; i < rows.length; i++) { table.append(rows[i]) }
         })
-    </script>
+        function comparer(index) {
+            return function (a, b) {
+                var valA = getCellValue(a, index), valB = getCellValue(b, index)
+                return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
+            }
+        }
+        function getCellValue(row, index) { return $(row).children('td').eq(index).text() }
+    })
+</script>
 </head>
+
 <body class="bg-gray-100 text-gray-800 font-sans">
     <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
         <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Ученики</h1>
@@ -34,26 +28,32 @@
             {{ form.hidden_tag() }}
             <div>
                 {{ form.last_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.last_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.last_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.first_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.first_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.first_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.middle_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.middle_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.middle_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.class_id.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.class_id(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.class_id(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
+                leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
                 {{ form.photo.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.photo(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+                {{ form.photo(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight
+                focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
-                {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline") }}
+                {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded
+                focus:outline-none focus:shadow-outline") }}
             </div>
         </form>
         <table class="min-w-full bg-white mt-6">
@@ -74,16 +74,19 @@
                     <td class="py-2 px-4 border-b">{{ student[3] }}</td>
                     <td class="py-2 px-4 border-b">{{ student[6] }}</td>
                     <td class="py-2 px-4 border-b">
-                        <a href="{{ url_for('edit_student', student_id=student[0]) }}" class="text-blue-500 hover:underline">Редактировать</a>
-                        <form action="{{ url_for('delete_student', student_id=student[0]) }}" method="POST" style="display:inline;">
-                            <button type="submit" onclick="return confirm('Вы уверены, что хотите удалить этого ученика?')" class="text-red-500 hover:underline">Удалить</button>
+                        <a href="{{ url_for('edit_student', student_id=student[0]) }}"
+                            class="text-blue-500 hover:underline">Редактировать</a>
+                        <form action="{{ url_for('delete_student', student_id=student[0]) }}" method="POST"
+                            style="display:inline;">
+                            <button type="submit"
+                                onclick="return confirm('Вы уверены, что хотите удалить этого ученика?')"
+                                class="text-red-500 hover:underline">Удалить</button>
                         </form>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        <a href="{{ url_for('admin_dashboard') }}" class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
-    </div>
-</body>
-</html>
+        <a href="{{ url_for('admin_dashboard') }}"
+            class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
+        {% endblock %}

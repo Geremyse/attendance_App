@@ -42,6 +42,7 @@ def get_db_connection():
     )
 
 def load_known_faces():
+    print("hello world")
     known_faces_dir = 'known_faces'
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -96,6 +97,7 @@ def capture_and_recognize():
     while capture_active:
         ret, frame = video_capture.read()
         if not ret:
+            print("Failed to capture frame")
             break
 
         frame_count += 1
@@ -112,7 +114,10 @@ def capture_and_recognize():
                 if True in matches:
                     first_match_index = matches.index(True)
                     name = known_face_names[first_match_index]
+                    print(f"Recognized: {name}")
                     record_attendance(name)
+                else:
+                    print(f"Unknown face detected")
 
                 # Отображение имени на изображении
                 cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
@@ -158,12 +163,14 @@ def record_attendance(student_name):
         values = (student_id, current_time)
         cursor.execute(query, values)
         conn.commit()
+        print(f"Attendance recorded for student {student_name} at {current_time}")
 
         # Отправка обновления через WebSocket
         socketio.emit('attendance_update', {'data': [(student_name, current_time)]})
 
     cursor.close()
     conn.close()
+
 
 @socketio.on('connect')
 def handle_connect():
@@ -175,15 +182,23 @@ def handle_disconnect():
 
 @socketio.on('get_attendance_updates')
 def handle_get_attendance_updates():
-    while True:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id")
-        attendance_data = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        socketio.emit('attendance_update', {'data': attendance_data})
-        socketio.sleep(5)  # Обновлять каждые 5 секунд
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id")
+    attendance_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Преобразование данных в список словарей для удобства
+    attendance_list = []
+    for name, attendance_time in attendance_data:
+        attendance_list.append({
+            'name': name,
+            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')  # Преобразование datetime в строку
+        })
+
+    socketio.emit('attendance_update', {'data': attendance_list})
+
 
 # Модель пользователя
 class User(UserMixin):
@@ -402,7 +417,6 @@ def get_teachers():
     return teachers
 
 
-
 @app.route('/teacher')
 @login_required
 @role_required('teacher')
@@ -415,6 +429,7 @@ def teacher_dashboard():
     conn.close()
     return render_template('teacher_dashboard.html', attendance_data=attendance_data)
 
+
 @app.route('/teacher/add_student', methods=['GET', 'POST'])
 @login_required
 @role_required('teacher')
@@ -423,7 +438,9 @@ def add_student():
     form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
     if form.validate_on_submit():
         print("Form validated successfully")
-        name = form.name.data
+        last_name = form.last_name.data
+        first_name = form.first_name.data
+        middle_name = form.middle_name.data
         class_id = form.class_id.data
         photo = form.photo.data
         if photo and allowed_file(photo.filename):
@@ -433,7 +450,8 @@ def add_student():
             photo.save(photo_path)
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO students (name, face_encoding, class_id) VALUES (%s, %s, %s)", (name, face_encoding, class_id))
+            cursor.execute("INSERT INTO students (last_name, first_name, middle_name, face_encoding, class_id) VALUES (%s, %s, %s, %s, %s)",
+                           (last_name, first_name, middle_name, face_encoding, class_id))
             conn.commit()
             cursor.close()
             conn.close()
@@ -448,6 +466,7 @@ def add_student():
             for error in errors:
                 print(f"Error in {field}: {error}")
     return render_template('add_student.html', form=form)
+
 
 def get_classes():
     conn = get_db_connection()
@@ -611,13 +630,11 @@ def delete_teacher(teacher_id):
     return redirect(url_for('admin_teachers'))
 
 
-
-
 @app.route('/admin/students/edit/<int:student_id>', methods=['GET', 'POST'])
 @login_required
 @role_required('admin')
 def edit_student(student_id):
-    form = StudentRegistrationForm()
+    form = AddStudentForm()
     form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
 
     if request.method == 'POST' and form.validate_on_submit():
@@ -716,6 +733,29 @@ def stop_capture():
     global capture_active
     capture_active = False
     return jsonify({"status": "Stopped capturing"})
+
+@app.route('/get_attendance_data')
+@login_required
+@role_required('teacher')
+def get_attendance_data():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), classes.name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id")
+    attendance_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Преобразование данных в список словарей для удобства
+    attendance_list = []
+    for name, class_name, attendance_time in attendance_data:
+        attendance_list.append({
+            'name': name,
+            'class': class_name,
+            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')  # Преобразование datetime в строку
+        })
+
+    return jsonify(attendance_list)
+
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, allow_unsafe_werkzeug=True)

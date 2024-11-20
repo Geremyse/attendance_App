@@ -1,11 +1,567 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="ru">
 
-{% block content %}
-    <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Панель администратора</h1>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <a href="{{ url_for('admin_teachers') }}" class="bg-blue-500 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition duration-300 text-center block">Учителя</a>
-        <a href="{{ url_for('admin_students') }}" class="bg-green-500 text-white px-4 py-2 rounded shadow hover:bg-green-700 transition duration-300 text-center block">Ученики</a>
-        <a href="{{ url_for('admin_classes') }}" class="bg-yellow-500 text-white px-4 py-2 rounded shadow hover:bg-yellow-700 transition duration-300 text-center block">Классы</a>
-        <a href="{{ url_for('logout') }}" class="bg-red-500 text-white px-4 py-2 rounded shadow hover:bg-red-700 transition duration-300 text-center block">Выход</a>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель администратора</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            width: 250px;
+            position: fixed;
+            height: 100%;
+            background-color: #f7fafc;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-item:hover .sidebar-item-content {
+            display: block;
+        }
+
+        .sidebar-item-content {
+            display: none;
+            background-color: #e2e8f0;
+            padding: 10px;
+            margin-top: 5px;
+            border-radius: 5px;
+        }
+
+        .sidebar-item-content img {
+            width: 100%;
+            height: auto;
+            border-radius: 15px;
+        }
+
+        .main-content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+            border: 2px solid #ccc;
+            /* Добавляем границу */
+            border-radius: 10px;
+            /* Скругляем углы */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            /* Добавляем тень */
+            background-color: #fff;
+            /* Фон графика */
+        }
+
+        /* Стили для канвы графика */
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: auto !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+        }
+
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+
+        .fixed-header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: rgba(255, 255, 255, 1);
+            /* Начальная прозрачность */
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            transition: background-color 0.3s ease;
+            /* Плавный переход прозрачности */
+        }
+
+        .statistics-image {
+            margin-left: 20px;
+            width: auto;
+            height: auto;
+        }
+
+        .statistics-image img {
+            width: 100%;
+            height: auto;
+            border-radius: 15px;
+        }
+
+        .scroll-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .scroll-top img {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+        }
+
+        .left-scroll-top {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 250px;
+            cursor: pointer;
+            border-radius: 15px;
+            z-index: 1000;
+        }
+
+        .left-scroll-top img {
+            width: 100%;
+            height: auto;
+            border-radius: 15px;
+        }
+
+        .placeholder-image {
+            width: 100%;
+            height: auto;
+            border-radius: 15px;
+        }
+
+        /* Цвета для панелей */
+        .statistics {
+            background-color: #b3befd;
+            /* Светло-синий */
+        }
+
+        .notifications {
+            background-color: #b3fddb;
+            /* Светло-зеленый */
+        }
+
+        .activities {
+            background-color: #fdbcba;
+            /* Светло-желтый */
+        }
+
+        .search {
+            background-color: #e0b3fd;
+            /* Светло-фиолетовый */
+        }
+
+        .settings {
+            background-color: #fdc0b3;
+            /* Светло-розовый */
+        }
+
+        /* Цвета при наведении */
+        .statistics:hover {
+            background-color: #8da9e6;
+            /* Темно-синий */
+        }
+
+        .notifications:hover {
+            background-color: #8dd9bd;
+            /* Темно-зеленый */
+        }
+
+        .activities:hover {
+            background-color: #e3d18a;
+            /* Темно-желтый */
+        }
+
+        .search:hover {
+            background-color: #c28de0;
+            /* Темно-фиолетовый */
+        }
+
+        .settings:hover {
+            background-color: #f3a6c0;
+            /* Темно-розовый */
+        }
+
+        .alert {
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+            position: fixed;
+            top: 50%;
+            /* Центрируем по вертикали */
+            left: 50%;
+            /* Центрируем по горизонтали */
+            transform: translate(-50%, -50%);
+            /* Сдвигаем на половину ширины и высоты для центрирования */
+            z-index: 1000;
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            /* Ширина уведомления */
+            max-width: 600px;
+            /* Максимальная ширина уведомления */
+            text-align: center;
+            /* Центрируем текст */
+        }
+
+        .alert.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="sidebar flex flex-col">
+        <div class="scroll-top-button" onclick="scrollToTop()">
+            <img src="https://www.kindpng.com/picc/m/295-2957810_vision-vision-icon-png-transparent-png.png"
+                alt="Vision - Vision Icon Png, Transparent Png@kindpng.com/250x50"
+                class="w-full cursor-pointer rounded-lg">
+        </div>
+        <a href="{{ url_for('admin_teachers') }}"
+            class="sidebar-item bg-blue-500 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition duration-300 text-center block relative mt-4">
+            Учителя
+            <div class="sidebar-item-content hidden">
+                <img src="https://www.kindpng.com/picc/m/256-2567156_man-teacher-light-skin-tone-icon-teacher-icon.png"
+                    alt="Man Teacher Light Skin Tone Icon - Teacher Icon, HD Png " class="w-full rounded-lg">
+            </div>
+        </a>
+        <a href="{{ url_for('admin_students') }}"
+            class="sidebar-item bg-green-500 text-white px-4 py-2 rounded shadow hover:bg-green-700 transition duration-300 text-center block relative">
+            Ученики
+            <div class="sidebar-item-content hidden">
+                <img src="https://www.kindpng.com/picc/m/117-1176772_woman-student-icon-emoji-mulher-png-transparent-png.png"
+                    alt="Woman Student Icon - Emoji Mulher Png, Transparent" class="w-full rounded-lg">
+            </div>
+        </a>
+        <a href="{{ url_for('admin_classes') }}"
+            class="sidebar-item bg-yellow-500 text-white px-4 py-2 rounded shadow hover:bg-yellow-700 transition duration-300 text-center block relative">
+            Классы
+            <div class="sidebar-item-content hidden">
+                <img src="https://www.kindpng.com/picc/m/480-4805653_b-emoji-copy-amp-paste-shrug-emojis-school.png"
+                    alt="B Emoji Copy Amp Paste Shrug Emojis - School Emoji Clipart, HD Png" class="w-full rounded-lg">
+            </div>
+        </a>
+        <a href="{{ url_for('admin_reports') }}"
+            class="sidebar-item bg-purple-500 text-white px-4 py-2 rounded shadow hover:bg-purple-700 transition duration-300 text-center block relative">
+            Отчёты
+            <div class="sidebar-item-content hidden">
+                <img src="https://www.kindpng.com/picc/m/445-4454529_paper-grammar-checker-transprent-notebook-emoji-hd-png.png"
+                    alt="Paper Grammar Checker Transprent - Notebook Emoji, HD Png" class="w-full rounded-lg">
+            </div>
+        </a>
+        <a href="{{ url_for('logout') }}"
+            class="sidebar-item bg-red-500 text-white px-4 py-2 rounded shadow hover:bg-red-700 transition duration-300 text-center block relative">
+            Выход
+            <div class="sidebar-item-content hidden">
+                <img src="https://www.kindpng.com/picc/m/1-12174_emergency-exit-icon-png-transparent-png.png"
+                    alt="Emergency Exit Icon Png, Transparent Png@kindpng.com" class="w-full rounded-lg">
+            </div>
+        </a>
     </div>
-{% endblock %}
+
+    <div class="fixed-header" id="fixedHeader">
+        <h1 class="text-4xl font-bold text-center text-gray-800">Панель администратора</h1>
+    </div>
+    <div class="main-content bg-white shadow-md rounded-lg p-6 mt-20">
+        <!-- Статистика посещаемости -->
+        <div
+            class="statistics mb-8 bg-white shadow-md rounded-lg p-6 transition-transform transform hover:scale-105 flex items-center">
+            <div class="w-2/3">
+                <h2 class="text-2xl font-bold mb-4">Статистика посещаемости</h2>
+                <div class="chart-container">
+                    <canvas id="attendanceChart"></canvas>
+                </div>
+            </div>
+            <div class="statistics-image ml-auto">
+                <img src="https://www.kindpng.com/picc/m/251-2510385_students-in-toronto-hd-png-download.png"
+                    alt="Students In Toronto, HD Png Download@kindpng.com/900x500" class="w-full rounded-lg">
+            </div>
+        </div>
+
+        <!-- Уведомления и сообщения -->
+        <div
+            class="notifications mb-8 bg-white shadow-md rounded-lg p-6 transition-transform transform hover:scale-105">
+            <h2 class="text-2xl font-bold mb-4">Уведомления</h2>
+            <ul id="notificationsList" class="list-disc list-inside">
+                <!-- Уведомления будут здесь -->
+            </ul>
+        </div>
+
+        <!-- Список последних активностей -->
+        <div class="activities mb-8 bg-white shadow-md rounded-lg p-6 transition-transform transform hover:scale-105">
+            <h2 class="text-2xl font-bold mb-4">Последние активности</h2>
+            <ul id="activitiesList" class="list-disc list-inside">
+                <!-- Активности будут здесь -->
+            </ul>
+        </div>
+
+        <!-- Поиск и фильтрация -->
+        <div class="search mb-8 bg-white shadow-md rounded-lg p-6 transition-transform transform hover:scale-105">
+            <h2 class="text-2xl font-bold mb-4">Поиск</h2>
+            <input type="text" id="searchInput" class="w-full p-2 border rounded"
+                placeholder="Введите запрос для поиска...">
+            <button onclick="performSearch()"
+                class="bg-blue-500 text-white px-4 py-2 rounded mt-2 transition-transform transform hover:scale-105">Поиск</button>
+            <ul id="searchResults" class="list-disc list-inside mt-4">
+                <!-- Результаты поиска будут здесь -->
+            </ul>
+        </div>
+
+        <!-- Настройки и управление -->
+        <div class="settings mb-8 bg-white shadow-md rounded-lg p-6 transition-transform transform hover:scale-105">
+            <h2 class="text-2xl font-bold mb-4">Настройки</h2>
+            <form id="settingsForm">
+                <div class="mb-4">
+                    <label for="faceRecognitionThreshold" class="block text-gray-700">Порог распознавания лиц:</label>
+                    <input type="number" id="faceRecognitionThreshold" name="faceRecognitionThreshold" step="0.1"
+                        class="w-full p-2 border rounded">
+                </div>
+                <div class="mb-4">
+                    <label for="notificationFrequency" class="block text-gray-700">Частота уведомлений:</label>
+                    <select id="notificationFrequency" name="notificationFrequency" class="w-full p-2 border rounded">
+                        <option value="daily">Ежедневно</option>
+                        <option value="weekly">Еженедельно</option>
+                        <option value="monthly">Ежемесячно</option>
+                    </select>
+                </div>
+                <button type="button" onclick="updateSettings()"
+                    class="bg-blue-500 text-white px-4 py-2 rounded transition-transform transform hover:scale-105">Сохранить
+                    настройки</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Картинка-стрелка для возврата вверх -->
+    <div class="scroll-top" onclick="scrollToTop()">
+        <img src="https://www.kindpng.com/picc/m/11-115926_filled-icon-free-download-back-to-top-arrow.png"
+            alt="Filled Icon Free Download - Back To Top Arrow Png, Transparent" class="w-full rounded-lg">
+    </div>
+
+    <!-- Индикатор загрузки -->
+    <div id="loading" class="loading">
+        <div class="border-t-4 border-blue-500 border-solid h-12 w-12 rounded-full animate-spin"></div>
+    </div>
+
+    <!-- Подключение библиотеки Chart.js для графиков -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Функция для получения данных статистики посещаемости
+        function fetchAttendanceStatistics() {
+            fetch('/get_attendance_statistics')
+                .then(response => response.json())
+                .then(data => {
+                    const ctx = document.getElementById('attendanceChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.map(item => item.date),
+                            datasets: [{
+                                label: 'Посещаемость',
+                                data: data.map(item => item.count),
+                                backgroundColor: 'rgba(75, 192, 192, 0.4)', // Пожирнее заливка
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 2, // Пожирнее граница
+                                pointBackgroundColor: 'rgba(75, 192, 192, 1)', // Цвет точек
+                                pointBorderColor: '#fff', // Граница точек
+                                pointHoverBackgroundColor: '#fff', // Цвет точек при наведении
+                                pointHoverBorderColor: 'rgba(75, 192, 192, 1)', // Граница точек при наведении
+                                pointRadius: 5, // Размер точек
+                                pointHoverRadius: 7, // Размер точек при наведении
+                                tension: 0.4 // Натяжение линии
+                            }]
+                        },
+                        options: {
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        font: {
+                                            size: 14, // Размер шрифта
+                                            weight: 'bold' // Жирный шрифт
+                                        },
+                                        color: '#333' // Цвет тиков
+                                    },
+                                    grid: {
+                                        color: 'rgba(0, 0, 0, 0.1)' // Цвет сетки
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        font: {
+                                            size: 14, // Размер шрифта
+                                            weight: 'bold' // Жирный шрифт
+                                        },
+                                        color: '#333' // Цвет тиков
+                                    },
+                                    grid: {
+                                        color: 'rgba(0, 0, 0, 0.1)' // Цвет сетки
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top',
+                                    labels: {
+                                        font: {
+                                            size: 16, // Размер шрифта
+                                            weight: 'bold' // Жирный шрифт
+                                        },
+                                        color: '#333' // Цвет легенды
+                                    }
+                                }
+                            }
+                        }
+                    });
+                });
+        }
+
+        // Функция для получения уведомлений
+        function fetchNotifications() {
+            fetch('/get_notifications')
+                .then(response => response.json())
+                .then(data => {
+                    const notificationsList = document.getElementById('notificationsList');
+                    notificationsList.innerHTML = '';
+                    data.forEach(notification => {
+                        const li = document.createElement('li');
+                        li.textContent = notification.message;
+                        notificationsList.appendChild(li);
+                    });
+                });
+        }
+
+        // Функция для получения последних активностей
+        function fetchRecentActivities() {
+            fetch('/get_recent_activities')
+                .then(response => response.json())
+                .then(data => {
+                    const activitiesList = document.getElementById('activitiesList');
+                    activitiesList.innerHTML = '';
+                    data.forEach(activity => {
+                        const li = document.createElement('li');
+                        li.textContent = `${activity.name} - ${activity.class} - ${activity.attendance_time}`;
+                        activitiesList.appendChild(li);
+                    });
+                });
+        }
+
+        // Функция для выполнения поиска
+        function performSearch() {
+            const query = document.getElementById('searchInput').value;
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `query=${query}`
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const searchResults = document.getElementById('searchResults');
+                    searchResults.innerHTML = '';
+                    data.forEach(result => {
+                        const li = document.createElement('li');
+                        if (result.type === 'attendance') {
+                            li.textContent = `${result.name} - ${result.class} - ${result.time}`;
+                        } else {
+                            li.textContent = `${result.name} - ${result.type}`;
+                        }
+                        searchResults.appendChild(li);
+                    });
+                    loading.style.display = 'none';
+                });
+        }
+
+        // Функция для обновления настроек
+        function updateSettings() {
+            const formData = {
+                faceRecognitionThreshold: document.getElementById('faceRecognitionThreshold').value,
+                notificationFrequency: document.getElementById('notificationFrequency').value
+            };
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            fetch('/update_settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showAlert('Настройки успешно сохранены', 'success');
+                    } else {
+                        showAlert('Ошибка при сохранении настроек', 'danger');
+                    }
+                    loading.style.display = 'none';
+                });
+        }
+
+        // Функция для отображения уведомлений
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} show`;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 500);
+            }, 2000);
+        }
+
+        // Функция для прокрутки вверх
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Функция для изменения прозрачности верхней панели при прокрутке
+        window.addEventListener('scroll', function () {
+            const fixedHeader = document.getElementById('fixedHeader');
+            const scrollTop = window.scrollY;
+            if (scrollTop > 0) {
+                fixedHeader.style.backgroundColor = 'rgba(255, 255, 255, 0.8)'; // Изменение прозрачности
+            } else {
+                fixedHeader.style.backgroundColor = 'rgba(255, 255, 255, 1)'; // Возврат к начальной прозрачности
+            }
+        });
+
+        // Инициализация данных при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function () {
+            fetchAttendanceStatistics();
+            fetchNotifications();
+            fetchRecentActivities();
+            fetch('/get_settings')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('faceRecognitionThreshold').value = data.face_recognition_threshold;
+                    document.getElementById('notificationFrequency').value = data.notification_frequency;
+                });
+        });
+    </script>
+</body>
+
+</html>

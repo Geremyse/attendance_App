@@ -286,6 +286,22 @@ def index():
 def admin_dashboard():
     return render_template('admin_dashboard.html')
 
+@app.route('/admin/reports')
+@login_required
+@role_required('admin')
+def admin_reports():
+    # Логика для получения данных для страницы отчетов
+    # Например, получение данных из базы данных
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM reports")
+    reports = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template('admin_reports.html', reports=reports)
+
+
 @app.route('/admin/teachers', methods=['GET', 'POST'])
 @login_required
 @role_required('admin')
@@ -755,6 +771,124 @@ def get_attendance_data():
         })
 
     return jsonify(attendance_list)
+
+@app.route('/get_attendance_statistics')
+@login_required
+@role_required('admin')
+def get_attendance_statistics():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DATE(attendance_time) as date, COUNT(*) as count FROM attendance GROUP BY DATE(attendance_time) ORDER BY date DESC LIMIT 7")
+    statistics = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Преобразование данных в список словарей для удобства
+    statistics_list = []
+    for date, count in statistics:
+        statistics_list.append({
+            'date': date.strftime('%Y-%m-%d'),
+            'count': count
+        })
+
+    return jsonify(statistics_list)
+
+@app.route('/get_notifications')
+@login_required
+@role_required('admin')
+def get_notifications():
+    # Логика для получения уведомлений
+    notifications = [
+        {"message": "Новый ученик добавлен."},
+        {"message": "Изменение данных учителя."}
+    ]
+    return jsonify(notifications)
+
+@app.route('/get_recent_activities')
+@login_required
+@role_required('admin')
+def get_recent_activities():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), classes.name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id ORDER BY attendance.attendance_time DESC LIMIT 10")
+    activities = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Преобразование данных в список словарей для удобства
+    activities_list = []
+    for name, class_name, attendance_time in activities:
+        activities_list.append({
+            'name': name,
+            'class': class_name,
+            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')
+        })
+
+    return jsonify(activities_list)
+
+@app.route('/search', methods=['POST'])
+@login_required
+@role_required('admin')
+def search():
+    query = request.form.get('query')
+    results = []
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Поиск учеников
+    cursor.execute("SELECT id, CONCAT(last_name, ' ', first_name, ' ', middle_name) as name, class_id FROM students WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) LIKE %s", ('%' + query + '%',))
+    students = cursor.fetchall()
+    for student in students:
+        results.append({"name": student[1], "type": "student", "class": student[2]})
+
+    # Поиск учителей
+    cursor.execute("SELECT id, CONCAT(last_name, ' ', first_name, ' ', middle_name) as name, class_id FROM teachers WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) LIKE %s", ('%' + query + '%',))
+    teachers = cursor.fetchall()
+    for teacher in teachers:
+        results.append({"name": teacher[1], "type": "teacher", "class": teacher[2]})
+
+    # Поиск классов
+    cursor.execute("SELECT id, name FROM classes WHERE name LIKE %s", ('%' + query + '%',))
+    classes = cursor.fetchall()
+    for cls in classes:
+        results.append({"name": cls[1], "type": "class"})
+
+    # Поиск посещаемости
+    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) as name, classes.name as class_name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id WHERE CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) LIKE %s", ('%' + query + '%',))
+    attendance = cursor.fetchall()
+    for record in attendance:
+        results.append({"name": record[0], "type": "attendance", "class": record[1], "time": record[2].strftime('%Y-%m-%d %H:%M:%S')})
+
+    cursor.close()
+    conn.close()
+
+    return jsonify(results)
+
+
+@app.route('/get_settings')
+@login_required
+@role_required('admin')
+def get_settings():
+    # Логика для получения настроек
+    settings = {
+        "face_recognition_threshold": 0.6,
+        "notification_frequency": "daily"
+    }
+    return jsonify(settings)
+
+@app.route('/update_settings', methods=['POST'])
+@login_required
+@role_required('admin')
+def update_settings():
+    data = request.json
+    # Логика для обновления настроек
+    # Например, обновление порогового значения распознавания лиц
+    face_recognition_threshold = data.get('face_recognition_threshold')
+    notification_frequency = data.get('notification_frequency')
+    # Здесь должна быть логика для сохранения настроек в базе данных
+    return jsonify({"status": "success"})
+
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ from forms import LoginForm, RegisterForm, AddStudentForm, TeacherRegistrationFo
 import os
 import json
 import random
+import shutil
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -26,9 +27,11 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 UPLOAD_FOLDER = 'known_faces'
+UPLOAD_FOLDER_FOR_PROFILE = 'static/students_photo'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['UPLOAD_FOLDER_FOR_PROFILE'] = UPLOAD_FOLDER_FOR_PROFILE  # Папка для сохранения фотографий профиля
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -201,7 +204,7 @@ def handle_get_attendance_updates():
 
 
 # Модель пользователя
-class User(UserMixin):
+""" class User(UserMixin):
     def __init__(self, id, username, password, role, last_name=None, first_name=None, middle_name=None):
         self.id = id
         self.username = username
@@ -218,10 +221,31 @@ class User(UserMixin):
         return self.role == 'teacher'
 
     def is_parent(self):
+        return self.role == 'parent' """
+
+class User(UserMixin):
+    def __init__(self, id, username, password, role, teacher_id=None, parent_id=None, last_name=None, first_name=None, middle_name=None):
+        self.id = id
+        self.username = username
+        self.password = password
+        self.role = role
+        self.teacher_id = teacher_id
+        self.parent_id = parent_id
+        self.last_name = last_name
+        self.first_name = first_name
+        self.middle_name = middle_name
+
+    def is_admin(self):
+        return self.role == 'admin'
+
+    def is_teacher(self):
+        return self.role == 'teacher'
+
+    def is_parent(self):
         return self.role == 'parent'
 
 
-@login_manager.user_loader
+""" @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -250,6 +274,34 @@ def load_user(user_id):
         cursor.close()
         conn.close()
         return User(user[0], user[1], user[2], user[3], last_name, first_name, middle_name)
+    return None """
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, password, role, teacher_id, parent_id FROM users WHERE id = %s", (user_id,))
+    user = cursor.fetchone()
+    if user:
+        role = user[3]
+        teacher_id = user[4]
+        parent_id = user[5]
+        last_name = first_name = middle_name = None
+
+        if role == 'teacher':
+            cursor.execute("SELECT last_name, first_name, middle_name FROM teachers WHERE id = %s", (teacher_id,))
+            teacher_data = cursor.fetchone()
+            if teacher_data:
+                last_name, first_name, middle_name = teacher_data
+        elif role == 'parent':
+            cursor.execute("SELECT last_name, first_name, middle_name FROM parents WHERE id = %s", (parent_id,))
+            parent_data = cursor.fetchone()
+            if parent_data:
+                last_name, first_name, middle_name = parent_data
+
+        cursor.close()
+        conn.close()
+        return User(user[0], user[1], user[2], user[3], teacher_id, parent_id, last_name, first_name, middle_name)
     return None
 
 
@@ -433,7 +485,7 @@ def get_teachers():
     return teachers
 
 
-@app.route('/teacher')
+""" @app.route('/teacher')
 @login_required
 @role_required('teacher')
 def teacher_dashboard():
@@ -443,7 +495,30 @@ def teacher_dashboard():
     attendance_data = cursor.fetchall()
     cursor.close()
     conn.close()
-    return render_template('teacher_dashboard.html', attendance_data=attendance_data)
+    return render_template('teacher_dashboard.html', attendance_data=attendance_data) """
+
+@app.route('/teacher')
+@login_required
+@role_required('teacher')
+def teacher_dashboard():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT class_id FROM teachers WHERE id = %s", (current_user.teacher_id,))
+    class_id = cursor.fetchone()[0]
+    cursor.execute("""
+        SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
+               classes.name, attendance.attendance_time
+        FROM attendance
+        JOIN students ON attendance.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        WHERE students.class_id = %s
+    """, (class_id,))
+    attendance_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    teacher_name = f"{current_user.last_name} {current_user.first_name} {current_user.middle_name}"
+    return render_template('teacher_dashboard.html', attendance_data=attendance_data, teacher_name=teacher_name)
 
 
 @app.route('/teacher/add_student', methods=['GET', 'POST'])
@@ -463,7 +538,11 @@ def add_student():
             face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
             filename = f"{face_encoding}.jpg"
             photo_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            photo_path_for_profile = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILE'], filename)
+            # Сохранение файла в первую папку
             photo.save(photo_path)
+            # Копирование файла во вторую папку
+            shutil.copyfile(photo_path, photo_path_for_profile)
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("INSERT INTO students (last_name, first_name, middle_name, face_encoding, class_id) VALUES (%s, %s, %s, %s, %s)",
@@ -664,8 +743,11 @@ def edit_student(student_id):
             face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
             filename = f"{face_encoding}.jpg"
             photo_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            photo_path_for_profile = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILE'], filename)
+            # Сохранение файла в первую папку
             photo.save(photo_path)
-
+            # Копирование файла во вторую папку
+            shutil.copyfile(photo_path, photo_path_for_profile)
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("UPDATE students SET last_name = %s, first_name = %s, middle_name = %s, face_encoding = %s, class_id = %s WHERE id = %s",
@@ -889,6 +971,73 @@ def update_settings():
     # Здесь должна быть логика для сохранения настроек в базе данных
     return jsonify({"status": "success"})
 
+@app.route('/reports')
+@login_required
+@role_required('teacher')
+def reports():
+    return render_template('teacher_reports.html')
+
+@app.route('/my_class')
+@login_required
+@role_required('teacher')
+def my_class():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Получаем класс учителя
+    cursor.execute("SELECT class_id FROM teachers WHERE id = %s", (current_user.teacher_id,))
+    class_id = cursor.fetchone()[0]
+
+    # Получаем название класса
+    cursor.execute("SELECT name FROM classes WHERE id = %s", (class_id,))
+    class_name = cursor.fetchone()[0]
+
+    # Получаем учеников, привязанных к этому классу
+    cursor.execute("""
+        SELECT id, last_name, first_name, middle_name, face_encoding
+        FROM students
+        WHERE class_id = %s
+    """, (class_id,))
+    students = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('my_class.html', class_name=class_name, students=students)
+
+@app.route('/teacher_profile')
+@login_required
+@role_required('teacher')
+def teacher_profile():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT t.last_name, t.first_name, t.middle_name, c.name AS class_name, t.email, t.phone, t.education, t.experience
+        FROM teachers t
+        JOIN classes c ON t.class_id = c.id
+        WHERE t.id = %s
+    """, (current_user.teacher_id,))
+    teacher_data = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if teacher_data:
+        teacher_name = f"{teacher_data[0]} {teacher_data[1]} {teacher_data[2]}"
+        teacher_class = teacher_data[3]
+        teacher_email = teacher_data[4]
+        teacher_phone = teacher_data[5]
+        teacher_education = teacher_data[6]
+        teacher_experience = teacher_data[7]
+    else:
+        teacher_name = teacher_class = teacher_email = teacher_phone = teacher_education = teacher_experience = ""
+
+    return render_template('teacher_profile.html',
+                           teacher_name=teacher_name,
+                           teacher_class=teacher_class,
+                           teacher_email=teacher_email,
+                           teacher_phone=teacher_phone,
+                           teacher_education=teacher_education,
+                           teacher_experience=teacher_experience)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мой Класс</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .student-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .student-card {
+            width: 250px;
+            text-align: center;
+        }
+
+        .student-card img {
+            border-radius: 50%;
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+        }
+
+        .student-card h2 {
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Мой Класс: {{ class_name }}</h1>
+        <div class="student-container">
+            {% for student in students %}
+                <div class="student-card">
+                    <img src="{{ url_for('static', filename='students_photo/' + student[4] + '.jpg') }}" alt="{{ student[1] }} {{ student[2] }} {{ student[3] }}">
+                    <h2>{{ student[1] }} {{ student[2] }} {{ student[3] }}</h2>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

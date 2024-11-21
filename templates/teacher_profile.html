@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль учителя</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            font-family: 'Prata', sans-serif;
+            background-color: #f7fafc;
+            color: #333;
+        }
+
+        .container {
+            margin: 0 auto;
+            padding: 20px;
+            max-width: 1200px;
+        }
+
+        .profile-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .profile-header img {
+            border-radius: 50%;
+            width: 150px;
+            height: 150px;
+            object-fit: cover;
+            margin-bottom: 10px;
+        }
+
+        .profile-info {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .profile-info h2 {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-top: 0;
+        }
+
+        .profile-info p {
+            font-size: 1.2em;
+            line-height: 1.6;
+        }
+
+        .profile-info .label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+        <div class="profile-header">
+            <img src="{{ url_for('static', filename='images/teacher_photo.jpg') }}" alt="Фото учителя">
+            <h1 class="text-3xl font-bold">{{ teacher_name }}</h1>
+        </div>
+        <div class="profile-info">
+            <h2>Информация об учителе</h2>
+            <p><span class="label">ФИО:</span> {{ teacher_name }}</p>
+            <p><span class="label">Класс:</span> {{ teacher_class }}</p>
+            <p><span class="label">Email:</span> {{ teacher_email }}</p>
+            <p><span class="label">Телефон:</span> {{ teacher_phone }}</p>
+        </div>
+        <div class="profile-info">
+            <h2>Образование</h2>
+            <p>{{ teacher_education }}</p>
+        </div>
+        <div class="profile-info">
+            <h2>Опыт работы</h2>
+            <p>{{ teacher_experience }}</p>
+        </div>
+    </div>
+</body>
+
+</html>

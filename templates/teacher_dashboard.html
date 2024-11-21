@@ -1,55 +1,358 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="ru">
 
-{% block content %}
-    <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Панель учителя</h1>
-    <div class="flex justify-end mb-4">
-        <button onclick="location.href=`{{ url_for('logout') }}`" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель учителя</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Общие стили для страницы */
+        body {
+            font-family: 'Prata', sans-serif;
+            background-color: #f7fafc;
+            color: #333;
+        }
+
+        .container {
+            margin: 0 auto;
+            padding: 20px;
+            max-width: 1200px;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        button {
+            transition: background-color 0.3s, transform 0.3s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        .video-container {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+            opacity: 0;
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        }
+
+        .video-container.show {
+            display: flex;
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .video-container.hide {
+            transform: scale(0);
+        }
+
+        /* Стили для камеры */
+        #videoCanvas {
+            border: 4px solid rgba(0, 128, 0, 0.5);
+            /* Светло-зеленый полупрозрачный цвет */
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            animation: fadeIn 1s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Стили для таблицы */
+        #attendanceTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #attendanceTable th,
+        #attendanceTable td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #ddd;
+            font-size: 16px;
+        }
+
+        #attendanceTable th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        #attendanceTable tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        #attendanceTable tr:hover {
+            background-color: #e2e2e2;
+            transform: scale(1.02);
+            /* Эффект зума */
+            transition: transform 0.3s ease-out;
+            /* Плавный переход */
+        }
+
+        /* Стили для уведомлений */
+        .alert {
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+            position: fixed;
+            top: 10px;
+            /* Позиционируем уведомления вверху */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .alert.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Стили для анимации загрузки */
+        .loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+
+        .loading div {
+            border: 4px solid rgba(0, 128, 0, 0.5);
+            /* Светло-зеленый полупрозрачный цвет */
+            border-top: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Стили для панели слева */
+        .sidebar {
+            width: 250px;
+            position: fixed;
+            height: 100%;
+            background-color: #f7fafc;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+
+        .sidebar:hover {
+            transform: translateX(-10px);
+        }
+
+        .sidebar a {
+            display: block;
+            padding: 10px;
+            text-align: center;
+            text-decoration: none;
+            color: #fff;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .sidebar a:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+
+        /* Стили для информационных блоков */
+        .info-block {
+            background-color: #fff;
+            border: 2px dashed rgba(0, 128, 0, 0.5);
+            /* Добавляем пунктирную рамку */
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            padding: 20px;
+            transition: transform 0.3s, box-shadow 0.3s, opacity 0.5s ease-out;
+        }
+
+        .info-block.hidden {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        .info-block:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .info-block h2 {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-top: 0;
+        }
+
+        .info-block p {
+            font-size: 1.2em;
+            line-height: 1.6;
+        }
+
+        /* Стили для заголовка */
+        .fixed-header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: rgba(255, 255, 255, 1);
+            z-index: 1000;
+            transition: background-color 0.3s;
+        }
+
+        .fixed-header h1 {
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .zoom-link {
+            display: inline-block;
+            transition: transform 0.3s ease-out;
+        }
+
+        .zoom-link:hover {
+            transform: scale(1.1);
+        }
+    </style>
+
+</head>
+
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="sidebar flex flex-col">
+        <div class="scroll-top-button" onclick="scrollToTop()">
+            <img src="https://www.kindpng.com/picc/m/295-2957810_vision-vision-icon-png-transparent-png.png"
+                alt="Vision - Vision Icon Png, Transparent Png@kindpng.com/250x50"
+                class="w-full cursor-pointer rounded-lg">
+        </div>
+        <a href="{{ url_for('logout') }}"
+            class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
             Выйти из системы
-        </button>
-        <button onclick="location.href=`{{ url_for('add_student') }}`" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+        </a>
+        <a href="{{ url_for('add_student') }}"
+            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
             Добавить студента
-        </button>        
+        </a>
+        <a href="{{ url_for('reports') }}"
+            class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            Отчёты
+        </a>
+        <a href="{{ url_for('my_class') }}"
+            class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            Мой Класс
+        </a>
+        <button id="startCaptureBtn" onclick="startCapture()"
+            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            Съемка
+        </button>
+        <button id="stopCaptureBtn"
+            class="hidden bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            onclick="stopCapture()">
+            Остановить съемку
+        </button>
     </div>
-    <table id="attendanceTable" class="min-w-full bg-white mt-6">
-        <thead>
-            <tr>
-                <th class="py-2 px-4 border-b text-center">ФИО</th>
-                <th class="py-2 px-4 border-b text-center">Класс</th>
-                <th class="py-2 px-4 border-b text-center">Время посещения</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in attendance_data %}
-            <tr>
-                <td class="py-2 px-4 border-b text-center">{{ row[0] }}</td>
-                <td class="py-2 px-4 border-b text-center">{{ row[1] }}</td>
-                <td class="py-2 px-4 border-b text-center">{{ row[2] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <div class="button-container mt-6">
-        <button id="startCaptureBtn" onclick="startCapture()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Съемка</button>
-        <button id="stopCaptureBtn" class="hidden bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onclick="stopCapture()">Остановить съемку</button>
+    <div class="fixed-header">
+        <h1 class="text-4xl font-bold text-center text-gray-800">
+            Панель учителя
+            <a href="{{ url_for('teacher_profile') }}" class="text-2xl font-semibold text-blue-600 zoom-link">{{
+                teacher_name }}</a>
+        </h1>
     </div>
-    <div class="video-container mt-6">
-        <canvas id="videoCanvas" width="640" height="480" class="shadow-md rounded-lg"></canvas>
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10" style="margin-top: 100px;">
+        <!-- Информационные блоки -->
+        <div class="info-block">
+            <h2>Как пользоваться сервисом</h2>
+            <p>На этой странице вы можете увидеть статистику посещаемости студентов, уведомления о последних активностях
+                и выполнить поиск по ученикам и классам. Для начала съемки нажмите кнопку "Съемка", а для остановки -
+                кнопку "Остановить съемку".</p>
+        </div>
+        <table id="attendanceTable" class="min-w-full bg-white mt-6">
+            <thead>
+                <tr>
+                    <th class="py-2 px-4 border-b text-center">ФИО</th>
+                    <th class="py-2 px-4 border-b text-center">Класс</th>
+                    <th class="py-2 px-4 border-b text-center">Время посещения</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in attendance_data %}
+                <tr>
+                    <td class="py-2 px-4 border-b text-center">{{ row[0] }}</td>
+                    <td class="py-2 px-4 border-b text-center">{{ row[1] }}</td>
+                    <td class="py-2 px-4 border-b text-center">{{ row[2] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="video-container">
+            <canvas id="videoCanvas" width="640" height="480" class="shadow-md rounded-lg"></canvas>
+        </div>
+    </div>
+    <div class="loading" id="loading">
+        <div></div>
     </div>
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         const socket = io();
         const canvas = document.getElementById('videoCanvas');
         const context = canvas.getContext('2d');
         const image = new Image();
 
-        socket.on('frame', function(data) {
+        socket.on('frame', function (data) {
             image.src = 'data:image/jpeg;base64,' + data.image;
-            image.onload = function() {
+            image.onload = function () {
                 context.drawImage(image, 0, 0, canvas.width, canvas.height);
             };
         });
 
-        socket.on('attendance_update', function() {
+        socket.on('attendance_update', function () {
             fetch('/get_attendance_data')
                 .then(response => response.json())
                 .then(data => {
@@ -83,13 +386,23 @@
         }
 
         function startCapture() {
+            document.getElementById('loading').style.display = 'block';
+            // Скрываем информационные блоки
+            document.querySelectorAll('.info-block').forEach(element => {
+                element.classList.add('hidden');
+            });
+            document.querySelector('.video-container').classList.add('show');
             fetch('/capture')
                 .then(response => response.json())
                 .then(data => {
-                    alert(data.status);
+                    showAlert('Съемка началась', 'success');
                     document.getElementById('startCaptureBtn').classList.add('hidden');
                     document.getElementById('stopCaptureBtn').classList.remove('hidden');
-                    document.querySelector('.video-container').style.display = 'block';
+                    document.getElementById('loading').style.display = 'none';
+                    // Скроллим до камеры
+                    setTimeout(() => {
+                        document.querySelector('.video-container').scrollIntoView({ behavior: 'smooth' });
+                    }, 500);
                 });
         }
 
@@ -97,17 +410,67 @@
             fetch('/stop_capture')
                 .then(response => response.json())
                 .then(data => {
-                    alert(data.status);
-                    document.getElementById('startCaptureBtn').classList.remove('hidden');
-                    document.getElementById('stopCaptureBtn').classList.add('hidden');
-                    document.querySelector('.video-container').style.display = 'none';
-                });
+                    // Плавно скрываем камеру
+                    document.querySelector('.video-container').classList.add('hide');
+                    // Показываем информационные блоки
+                    setTimeout(() => {
+                        document.querySelectorAll('.info-block').forEach(element => {
+                            element.classList.remove('hidden');
+                        });
+                        document.querySelector('.video-container').classList.remove('show', 'hide');
+                        document.getElementById('startCaptureBtn').classList.remove('hidden');
+                        document.getElementById('stopCaptureBtn').classList.add('hidden');
+                        // Скроллим обратно к информационным блокам
+                        document.querySelector('.info-block').scrollIntoView({ behavior: 'smooth' });
+                    }, 500);
+                    showAlert('Съемка остановлена', 'success');
+                })
+                .catch(error => console.error('Error stopping the capture:', error));
         }
 
-        // Запрос обновлений данных о посещаемости при подключении
-        socket.on('connect', function() {
-            console.log('Connected to server');
-            socket.emit('get_attendance_updates');
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} show`;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 500);
+            }, 2000);
+        }
+
+        // Функция для прокрутки вверх
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Функция для изменения прозрачности верхней панели при прокрутке
+        window.addEventListener('scroll', function () {
+            const fixedHeader = document.querySelector('.fixed-header');
+            const scrollTop = window.scrollY;
+            if (scrollTop > 0) {
+                fixedHeader.style.backgroundColor = 'rgba(255, 255, 255, 0.8)'; // Изменение прозрачности
+            } else {
+                fixedHeader.style.backgroundColor = 'rgba(255, 255, 255, 1)'; // Возврат к начальной прозрачности
+            }
+        });
+
+        // Инициализация данных при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function () {
+            fetch('/get_settings')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('faceRecognitionThreshold').value = data.face_recognition_threshold;
+                    document.getElementById('notificationFrequency').value = data.notification_frequency;
+                });
         });
     </script>
-{% endblock %}
+</body>
+
+</html>

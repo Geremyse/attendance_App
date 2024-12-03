@@ -5,8 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="1f02665f-3b64-4a85-9505-d2221b9394ab" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitattributes" beforeDir="false" afterPath="$PROJECT_DIR$/.gitattributes" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/forms.py" beforeDir="false" afterPath="$PROJECT_DIR$/forms.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/admin_classes.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/admin_classes.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/admin_dashboard.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/admin_dashboard.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/admin_teachers.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/admin_teachers.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/edit_teacher.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/edit_teacher.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/my_class.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/my_class.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/teacher_dashboard.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/teacher_dashboard.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/teacher_profile.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/teacher_profile.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/teacher_reports.html" beforeDir="false" afterPath="$PROJECT_DIR$/templates/teacher_reports.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Расписание</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .schedule-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            background-color: #fff;
+        }
+
+        .schedule-table th,
+        .schedule-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .schedule-table th {
+            background-color: #f2f2f2;
+            cursor: pointer;
+        }
+
+        .schedule-table th:hover {
+            background-color: #e0e0e0;
+        }
+
+        .schedule-table tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .error-message {
+            color: red;
+            margin-top: 20px;
+        }
+
+        .filter-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .filter-container select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .filter-container button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .filter-container button:hover {
+            background-color: #0056b3;
+        }
+
+        .fixed-header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background-color: rgba(255, 255, 255, 1);
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            transition: background-color 0.3s ease;
+        }
+
+        .fixed-header.scrolled {
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .back-button {
+            margin-top: 20px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #28a745;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .back-button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="fixed-header" id="fixedHeader">
+        <h1 class="text-4xl font-bold text-center text-gray-800">Расписание</h1>
+    </div>
+    <div class="main-content bg-white shadow-md rounded-lg p-6 mt-20">
+        <div class="schedule-container">
+            <div class="filter-container">
+                <select id="dayOfWeekFilter">
+                    <option value="">Фильтр по дню недели</option>
+                </select>
+                <select id="classFilter">
+                    <option value="">Фильтр по классу</option>
+                </select>
+                <select id="timeFilter">
+                    <option value="">Фильтр по времени</option>
+                </select>
+                <select id="subjectFilter">
+                    <option value="">Фильтр по предмету</option>
+                </select>
+                <select id="teacherFilter">
+                    <option value="">Фильтр по учителю</option>
+                </select>
+                <button onclick="applyFilters()">Применить фильтры</button>
+            </div>
+            <div class="button-container">
+                <button class="back-button" onclick="window.location.href='/teacher'">Вернуться к панели учителя</button>
+            </div>
+            <div id="schedulePlaceholder" class="mt-4">
+                <table class="schedule-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Дата</th>
+                            <th onclick="sortTable(1)">День недели</th>
+                            <th onclick="sortTable(2)">Номер урока</th>
+                            <th onclick="sortTable(3)">Время</th>
+                            <th onclick="sortTable(4)">Класс</th>
+                            <th onclick="sortTable(5)">Предмет</th>
+                            <th onclick="sortTable(6)">Учитель</th>
+                            <th onclick="sortTable(7)">Кабинет</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scheduleBody">
+                        <!-- Schedule data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+            <div id="loading" class="loading">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            fetchSchedule();
+            fetchFilters();
+        });
+
+        function fetchSchedule() {
+            showLoading();
+            fetch('/get_teacher_schedule')
+                .then(response => response.json())
+                .then(data => {
+                    hideLoading();
+                    if (data.status === 'success') {
+                        displaySchedule(data.schedule);
+                    } else {
+                        const errorMessageElement = document.getElementById('errorMessage');
+                        if (errorMessageElement) {
+                            errorMessageElement.textContent = `Ошибка при загрузке расписания: ${data.message}`;
+                            errorMessageElement.style.display = 'block';
+                        }
+                    }
+                })
+                .catch(error => {
+                    hideLoading();
+                    console.error('Error:', error);
+                    const errorMessageElement = document.getElementById('errorMessage');
+                    if (errorMessageElement) {
+                        errorMessageElement.textContent = `Ошибка при загрузке расписания: ${error.message}`;
+                        errorMessageElement.style.display = 'block';
+                    }
+                });
+        }
+
+        function displaySchedule(schedule) {
+            const scheduleBody = document.getElementById('scheduleBody');
+            if (scheduleBody) {
+                scheduleBody.innerHTML = '';
+                schedule.forEach(lesson => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${lesson.date}</td>
+                        <td>${lesson.day_of_week}</td>
+                        <td>${lesson.lesson_number}</td>
+                        <td>${lesson.time}</td>
+                        <td>${lesson.class_name}</td>
+                        <td>${lesson.subject}</td>
+                        <td>${lesson.teacher}</td>
+                        <td>${lesson.room}</td>
+                    `;
+                    scheduleBody.appendChild(row);
+                });
+            }
+        }
+
+        function sortTable(columnIndex) {
+            const table = document.getElementById('scheduleBody');
+            if (table) {
+                const rows = Array.from(table.rows);
+                const isAscending = table.getAttribute('data-sort-order') === 'asc';
+                rows.sort((a, b) => {
+                    const cellA = a.cells[columnIndex].textContent.trim();
+                    const cellB = b.cells[columnIndex].textContent.trim();
+                    if (!isNaN(cellA) && !isNaN(cellB)) {
+                        return isAscending ? cellA - cellB : cellB - cellA;
+                    } else {
+                        return isAscending ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+                    }
+                });
+                table.innerHTML = '';
+                rows.forEach(row => table.appendChild(row));
+                table.setAttribute('data-sort-order', isAscending ? 'desc' : 'asc');
+            }
+        }
+
+        function applyFilters() {
+            showLoading();
+            const dayOfWeekFilter = document.getElementById('dayOfWeekFilter').value.trim();
+            const classFilter = document.getElementById('classFilter').value.trim();
+            const timeFilter = document.getElementById('timeFilter').value.trim();
+            const subjectFilter = document.getElementById('subjectFilter').value.trim();
+            const teacherFilter = document.getElementById('teacherFilter').value.trim();
+
+            fetch('/get_teacher_schedule')
+                .then(response => response.json())
+                .then(data => {
+                    hideLoading();
+                    if (data.status === 'success') {
+                        const filteredSchedule = data.schedule.filter(lesson => {
+                            return (dayOfWeekFilter === '' || lesson.day_of_week === dayOfWeekFilter) &&
+                                (classFilter === '' || lesson.class_name === classFilter) &&
+                                (timeFilter === '' || lesson.time === timeFilter) &&
+                                (subjectFilter === '' || lesson.subject === subjectFilter) &&
+                                (teacherFilter === '' || lesson.teacher === teacherFilter);
+                        });
+                        displaySchedule(filteredSchedule);
+                    } else {
+                        const errorMessageElement = document.getElementById('errorMessage');
+                        if (errorMessageElement) {
+                            errorMessageElement.textContent = `Ошибка при загрузке расписания: ${data.message}`;
+                            errorMessageElement.style.display = 'block';
+                        }
+                    }
+                })
+                .catch(error => {
+                    hideLoading();
+                    console.error('Error:', error);
+                    const errorMessageElement = document.getElementById('errorMessage');
+                    if (errorMessageElement) {
+                        errorMessageElement.textContent = `Ошибка при загрузке расписания: ${error.message}`;
+                        errorMessageElement.style.display = 'block';
+                    }
+                });
+        }
+
+        function fetchFilters() {
+            fetch('/get_teacher_schedule_filters')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        populateFilters(data.filters);
+                    } else {
+                        const errorMessageElement = document.getElementById('errorMessage');
+                        if (errorMessageElement) {
+                            errorMessageElement.textContent = `Ошибка при загрузке фильтров: ${data.message}`;
+                            errorMessageElement.style.display = 'block';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    const errorMessageElement = document.getElementById('errorMessage');
+                    if (errorMessageElement) {
+                        errorMessageElement.textContent = `Ошибка при загрузке фильтров: ${error.message}`;
+                        errorMessageElement.style.display = 'block';
+                    }
+                });
+        }
+
+        function populateFilters(filters) {
+            const dayOfWeekFilter = document.getElementById('dayOfWeekFilter');
+            const classFilter = document.getElementById('classFilter');
+            const timeFilter = document.getElementById('timeFilter');
+            const subjectFilter = document.getElementById('subjectFilter');
+            const teacherFilter = document.getElementById('teacherFilter');
+
+            filters.daysOfWeek.forEach(day => {
+                const option = document.createElement('option');
+                option.value = day;
+                option.textContent = day;
+                dayOfWeekFilter.appendChild(option);
+            });
+
+            filters.classes.forEach(cls => {
+                const option = document.createElement('option');
+                option.value = cls;
+                option.textContent = cls;
+                classFilter.appendChild(option);
+            });
+
+            filters.times.forEach(time => {
+                const option = document.createElement('option');
+                option.value = time;
+                option.textContent = time;
+                timeFilter.appendChild(option);
+            });
+
+            filters.subjects.forEach(subject => {
+                const option = document.createElement('option');
+                option.value = subject;
+                option.textContent = subject;
+                subjectFilter.appendChild(option);
+            });
+
+            filters.teachers.forEach(teacher => {
+                const option = document.createElement('option');
+                option.value = teacher;
+                option.textContent = teacher;
+                teacherFilter.appendChild(option);
+            });
+        }
+
+        function showLoading() {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.style.display = 'block';
+            }
+        }
+
+        function hideLoading() {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.style.display = 'none';
+            }
+        }
+
+        window.addEventListener('scroll', function () {
+            const fixedHeader = document.getElementById('fixedHeader');
+            const scrollTop = window.scrollY;
+            if (scrollTop > 0) {
+                fixedHeader.classList.add('scrolled');
+            } else {
+                fixedHeader.classList.remove('scrolled');
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детали класса</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .teacher-circle img,
+        .student-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .teacher-circle:hover,
+        .student-circle:hover {
+            transform: scale(1.1);
+        }
+
+        .student-name:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="class-header bg-blue-500 text-black p-4 rounded-lg shadow-md text-center mb-8">
+        <h1 class="text-4xl font-bold">{{ class_name }}</h1>
+    </div>
+
+    {% if teacher %}
+    <div class="teacher-container mb-8">
+        <div class="teacher-card p-4 border border-gray-300 rounded-lg shadow-md transition transform hover:scale-105 bg-opacity-50"
+            style="background-color: rgba(162, 48, 197, 0.5); border-color: rgb(218, 11, 173);">
+            <a href="{{ url_for('edit_teacher', teacher_id=teacher[0]) }}" class="block text-center">
+                <div
+                    class="teacher-circle w-40 h-40 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden border-4 border-blue-500 mx-auto mb-4">
+                    {% if teacher[9] %}
+                    <img src="{{ url_for('static', filename='teachers_photo/' + teacher[9] + '.jpg') }}"
+                        alt="{{ teacher[1] }} {{ teacher[2] }} {{ teacher[3] }}">
+                    {% else %}
+                    <span class="text-gray-500">Фото</span>
+                    {% endif %}
+                </div>
+                <div class="teacher-name text-xl font-semibold mb-2">{{ teacher[1] }} {{ teacher[2] }} {{ teacher[3] }}</div>
+                <div class="teacher-info text-gray-600">
+                    <p>Почта: {{ teacher[11] }}</p>
+                    <p>Телефон: {{ teacher[12] }}</p>
+                    <p>Образование: {{ teacher[13] }}</p>
+                    <p>Опыт работы: {{ teacher[14] }}</p>
+                </div>
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <div class="teacher-container mb-8">
+        <div class="teacher-card p-4 border border-gray-300 rounded-lg shadow-md transition transform hover:scale-105 bg-opacity-50"
+            style="background-color: rgba(162, 48, 197, 0.5); border-color: rgb(218, 11, 173);">
+            <div class="text-center text-xl font-semibold mb-2">Классный руководитель не найден</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <hr class="my-8 border-2 border-gray-800">
+
+    <div class="student-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {% if students %}
+        {% for student in students %}
+        <div class="student-card p-4 border border-gray-300 rounded-lg shadow-md transition transform hover:scale-105 bg-opacity-50"
+            style="background-color: rgba(87, 202, 223, 0.5); border-color: #0b2a92;">
+            <a href="{{ url_for('edit_student', student_id=student[0]) }}" class="block">
+                <div
+                    class="student-circle w-40 h-40 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden border-4 border-green-500 mx-auto mb-4">
+                    <img src="{{ url_for('static', filename='students_photo/' + student[4] + '.jpg') }}"
+                        alt="{{ student[1] }} {{ student[2] }} {{ student[3] }}">
+                </div>
+                <div class="student-name text-center mt-4 text-xl font-semibold">{{ student[1] }} {{ student[2] }} {{ student[3] }}</div>
+                <div class="student-info text-center mt-2 text-gray-600">
+                    <p>Класс: {{ student[5] }}</p>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="student-card p-4 border border-gray-300 rounded-lg shadow-md transition transform hover:scale-105 bg-opacity-50"
+            style="background-color: rgba(87, 202, 223, 0.5); border-color: #0b2a92;">
+            <div class="text-center text-xl font-semibold mb-2">Ученики не найдены</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="back-button-container text-center mt-8">
+        <a href="{{ url_for('admin_classes') }}"
+            class="back-button inline-block px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300">Вернуться
+            к списку классов</a>
+    </div>
+</body>
+</html>

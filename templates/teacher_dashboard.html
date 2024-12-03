@@ -260,8 +260,14 @@
         .zoom-link:hover {
             transform: scale(1.1);
         }
-    </style>
 
+        .disabled {
+            pointer-events: none;
+            opacity: 0.6;
+            background-color: #cccccc !important;
+            cursor: not-allowed;
+        }
+    </style>
 </head>
 
 <body class="bg-gray-100 text-gray-800 font-sans">
@@ -284,8 +290,12 @@
             Отчёты
         </a>
         <a href="{{ url_for('my_class') }}"
-            class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline {% if not has_classes %}disabled{% endif %}">
             Мой Класс
+        </a>
+        <a href="{{ url_for('teacher_schedule') }}"
+            class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline {% if not has_classes %}disabled{% endif %}">
+            Расписание
         </a>
         <button id="startCaptureBtn" onclick="startCapture()"
             class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
@@ -308,9 +318,8 @@
         <!-- Информационные блоки -->
         <div class="info-block">
             <h2>Как пользоваться сервисом</h2>
-            <p>На этой странице вы можете увидеть статистику посещаемости студентов, уведомления о последних активностях
-                и выполнить поиск по ученикам и классам. Для начала съемки нажмите кнопку "Съемка", а для остановки -
-                кнопку "Остановить съемку".</p>
+            <p>На этой странице вы можете увидеть таблицу посещаемости студентов.
+                Для начала съемки нажмите кнопку "Съемка", а для остановки - кнопку "Остановить съемку".</p>
         </div>
         <table id="attendanceTable" class="min-w-full bg-white mt-6">
             <thead>

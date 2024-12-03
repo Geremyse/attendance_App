@@ -61,7 +61,6 @@
             max-height: 100% !important;
         }
 
-
         .loading {
             display: none;
             position: fixed;
@@ -189,9 +188,9 @@
             transform: translateY(-20px);
             transition: opacity 0.5s ease-out, transform 0.5s ease-out;
             position: fixed;
-            top: 50%;
+            top: 10%;
             /* Центрируем по вертикали */
-            left: 50%;
+            left: 40%;
             /* Центрируем по горизонтали */
             transform: translate(-50%, -50%);
             /* Сдвигаем на половину ширины и высоты для центрирования */
@@ -263,12 +262,20 @@
                     alt="Paper Grammar Checker Transprent - Notebook Emoji, HD Png" class="w-full rounded-lg">
             </div>
         </a>
+        <a href="{{ url_for('schedule') }}"
+            class="sidebar-item bg-purple-500 text-white px-4 py-2 rounded shadow hover:bg-purple-700 transition duration-300 text-center block relative">
+            Расписание
+            <div class="sidebar-item-content hidden">
+                <img src="https://www.kindpng.com/picc/m/445-4454529_paper-grammar-checker-transprent-notebook-emoji-hd-png.png"
+                    alt="Paper Grammar Checker Transprent - Notebook Emoji, HD Png" class="w-full rounded-lg">
+            </div>
+        </a>
         <a href="{{ url_for('logout') }}"
             class="sidebar-item bg-red-500 text-white px-4 py-2 rounded shadow hover:bg-red-700 transition duration-300 text-center block relative">
             Выход
             <div class="sidebar-item-content hidden">
-                <img src="https://www.kindpng.com/picc/m/1-12174_emergency-exit-icon-png-transparent-png.png"
-                    alt="Emergency Exit Icon Png, Transparent Png@kindpng.com" class="w-full rounded-lg">
+                <img src="https://www.kindpng.com/picc/m/1-12189_logout-exit-door-exit-icon-white-png-transparent.png"
+                    alt="Logout Exit Door - Exit Icon White Png, Transparent Png@kindpng.com">
             </div>
         </a>
     </div>
@@ -439,7 +446,7 @@
                     notificationsList.innerHTML = '';
                     data.forEach(notification => {
                         const li = document.createElement('li');
-                        li.textContent = notification.message;
+                        li.textContent = notification;
                         notificationsList.appendChild(li);
                     });
                 });
@@ -454,7 +461,7 @@
                     activitiesList.innerHTML = '';
                     data.forEach(activity => {
                         const li = document.createElement('li');
-                        li.textContent = `${activity.name} - ${activity.class} - ${activity.attendance_time}`;
+                        li.textContent = `${activity.student_name} - ${activity.class_name} - ${activity.teacher_name} - ${activity.attendance_time}`;
                         activitiesList.appendChild(li);
                     });
                 });
@@ -478,11 +485,7 @@
                     searchResults.innerHTML = '';
                     data.forEach(result => {
                         const li = document.createElement('li');
-                        if (result.type === 'attendance') {
-                            li.textContent = `${result.name} - ${result.class} - ${result.time}`;
-                        } else {
-                            li.textContent = `${result.name} - ${result.type}`;
-                        }
+                        li.textContent = `${result.student_name} - ${result.class_name} - ${result.teacher_name} - ${result.attendance_time}`;
                         searchResults.appendChild(li);
                     });
                     loading.style.display = 'none';

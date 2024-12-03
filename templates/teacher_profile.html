@@ -57,6 +57,21 @@
             font-weight: bold;
             margin-right: 10px;
         }
+
+        .back-button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+
+        .back-button:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 
@@ -69,7 +84,7 @@
         <div class="profile-info">
             <h2>Информация об учителе</h2>
             <p><span class="label">ФИО:</span> {{ teacher_name }}</p>
-            <p><span class="label">Класс:</span> {{ teacher_class }}</p>
+            <p><span class="label">Класс(ы):</span> {{ teacher_class }}</p>
             <p><span class="label">Email:</span> {{ teacher_email }}</p>
             <p><span class="label">Телефон:</span> {{ teacher_phone }}</p>
         </div>
@@ -81,6 +96,7 @@
             <h2>Опыт работы</h2>
             <p>{{ teacher_experience }}</p>
         </div>
+        <a href="{{ url_for('teacher_dashboard') }}" class="back-button">Вернуться на главную</a>
     </div>
 </body>
 

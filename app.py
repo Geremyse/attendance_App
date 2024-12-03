@@ -17,6 +17,10 @@ import os
 import json
 import random
 import shutil
+from werkzeug.utils import secure_filename
+import pandas as pd
+from collections import defaultdict
+import re
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -27,14 +31,18 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 UPLOAD_FOLDER = 'known_faces'
-UPLOAD_FOLDER_FOR_PROFILE = 'static/students_photo'
+UPLOAD_FOLDER_FOR_PROFILES_S = 'static/students_photo'
+UPLOAD_FOLDER_FOR_PROFILES_T = 'static/teachers_photo'
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['UPLOAD_FOLDER_FOR_PROFILE'] = UPLOAD_FOLDER_FOR_PROFILE  # Папка для сохранения фотографий профиля
+app.config['UPLOAD_FOLDER_FOR_PROFILES_S'] = UPLOAD_FOLDER_FOR_PROFILES_S  # Папка для сохранения фотографий профиля учеников
+app.config['UPLOAD_FOLDER_FOR_PROFILES_T'] = UPLOAD_FOLDER_FOR_PROFILES_T  # Папка для сохранения фотографий профиля учителей
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS, {'xlsx'}
+
 
 def get_db_connection():
     return mysql.connector.connect(
@@ -86,7 +94,7 @@ import base64
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
-def capture_and_recognize():
+def capture_and_recognize(teacher_id):
     global capture_active
     video_capture = cv2.VideoCapture(1)
     video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # Уменьшение разрешения
@@ -118,7 +126,7 @@ def capture_and_recognize():
                     first_match_index = matches.index(True)
                     name = known_face_names[first_match_index]
                     print(f"Recognized: {name}")
-                    record_attendance(name)
+                    record_attendance(name, teacher_id)
                 else:
                     print(f"Unknown face detected")
 
@@ -141,8 +149,9 @@ def capture_and_recognize():
     video_capture.release()
     cv2.destroyAllWindows()
 
+
 # Запись данных о посещаемости
-def record_attendance(student_name):
+def record_attendance(student_name, teacher_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM students WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s", (student_name,))
@@ -162,8 +171,8 @@ def record_attendance(student_name):
     existing_record = cursor.fetchone()
 
     if not existing_record:
-        query = "INSERT INTO attendance (student_id, attendance_time) VALUES (%s, %s)"
-        values = (student_id, current_time)
+        query = "INSERT INTO attendance (student_id, attendance_time, responsible_teacher_id) VALUES (%s, %s, %s)"
+        values = (student_id, current_time, teacher_id)
         cursor.execute(query, values)
         conn.commit()
         print(f"Attendance recorded for student {student_name} at {current_time}")
@@ -173,6 +182,7 @@ def record_attendance(student_name):
 
     cursor.close()
     conn.close()
+
 
 
 @socketio.on('connect')
@@ -359,14 +369,14 @@ def admin_reports():
 @role_required('admin')
 def admin_teachers():
     form = TeacherRegistrationForm()
-    form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
+    form.class_id.choices = [(row[0], row[1]) for row in get_classes() if row[1] != 'No Class']
     if form.validate_on_submit():
         last_name = form.last_name.data
         first_name = form.first_name.data
         middle_name = form.middle_name.data
         username = form.username.data
         password = form.password.data
-        class_id = form.class_id.data
+        has_classes = request.form.get('has_classes') == 'on'
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -378,19 +388,30 @@ def admin_teachers():
             flash('Имя пользователя уже существует', 'danger')
             return redirect(url_for('admin_teachers'))
 
-        cursor.execute("INSERT INTO teachers (last_name, first_name, middle_name, class_id) VALUES (%s, %s, %s, %s)",
-                       (last_name, first_name, middle_name, class_id))
+        cursor.execute("INSERT INTO teachers (last_name, first_name, middle_name) VALUES (%s, %s, %s)",
+                       (last_name, first_name, middle_name))
         teacher_id = cursor.lastrowid
         cursor.execute("INSERT INTO users (username, password, role, teacher_id) VALUES (%s, %s, %s, %s)",
                        (username, password, 'teacher', teacher_id))
+
+        if has_classes:
+            class_ids = form.class_id.data
+            for class_id in class_ids:
+                cursor.execute("INSERT INTO teacher_classes (teacher_id, class_id, has_classes) VALUES (%s, %s, %s)",
+                               (teacher_id, class_id, 1))
+        else:
+            cursor.execute("INSERT INTO teacher_classes (teacher_id, class_id, has_classes) VALUES (%s, %s, %s)",
+                           (teacher_id, 0, 0))  # Используем 0 для обозначения отсутствия класса
+
         conn.commit()
         cursor.close()
         conn.close()
         flash('Учитель добавлен успешно', 'success')
         return redirect(url_for('admin_teachers'))
 
-    teachers = get_teachers()
+    teachers = get_teachers_with_combined_classes()
     return render_template('admin_teachers.html', form=form, teachers=teachers)
+
 
 
 @app.route('/admin/students', methods=['GET', 'POST'])
@@ -468,16 +489,23 @@ def get_teachers():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT teachers.*, users.username, users.password, users.role, classes.name
+        SELECT teachers.id, teachers.last_name, teachers.first_name, teachers.middle_name,
+               users.username, users.password, users.role,
+               GROUP_CONCAT(classes.name ORDER BY classes.name SEPARATOR ', ') as class_names,
+               MAX(teacher_classes.has_classes) as has_classes,
+               teachers.face_encoding,
+               teacher_classes.class_id,
+               teachers.email, teachers.phone, teachers.education, teachers.experience
         FROM teachers
         JOIN users ON teachers.id = users.teacher_id
-        JOIN classes ON teachers.class_id = classes.id
+        LEFT JOIN teacher_classes ON teachers.id = teacher_classes.teacher_id
+        LEFT JOIN classes ON teacher_classes.class_id = classes.id
+        GROUP BY teachers.id, users.username, users.password, users.role, teacher_classes.class_id
     """)
     teachers = cursor.fetchall()
     cursor.close()
     conn.close()
-
-    # Отладочная информация
+        # Отладочная информация
     print("Teachers data fetched from the database:")
     for teacher in teachers:
         print(teacher)
@@ -503,22 +531,34 @@ def teacher_dashboard():
 def teacher_dashboard():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT class_id FROM teachers WHERE id = %s", (current_user.teacher_id,))
-    class_id = cursor.fetchone()[0]
+    teacher_id = current_user.teacher_id
+
+    # Получаем данные о посещаемости для учеников, за съемку которых отвечал текущий учитель
     cursor.execute("""
         SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
                classes.name, attendance.attendance_time
         FROM attendance
         JOIN students ON attendance.student_id = students.id
         JOIN classes ON students.class_id = classes.id
-        WHERE students.class_id = %s
-    """, (class_id,))
+        WHERE attendance.responsible_teacher_id = %s
+        ORDER BY attendance.attendance_time DESC
+        LIMIT 10
+    """, (teacher_id,))
     attendance_data = cursor.fetchall()
+
+    # Проверяем, есть ли у учителя классы
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM teacher_classes
+        WHERE teacher_id = %s AND has_classes = 1
+    """, (teacher_id,))
+    has_classes = cursor.fetchone()[0] > 0
+
     cursor.close()
     conn.close()
 
     teacher_name = f"{current_user.last_name} {current_user.first_name} {current_user.middle_name}"
-    return render_template('teacher_dashboard.html', attendance_data=attendance_data, teacher_name=teacher_name)
+    return render_template('teacher_dashboard.html', attendance_data=attendance_data, teacher_name=teacher_name, has_classes=has_classes)
 
 
 @app.route('/teacher/add_student', methods=['GET', 'POST'])
@@ -538,7 +578,7 @@ def add_student():
             face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
             filename = f"{face_encoding}.jpg"
             photo_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            photo_path_for_profile = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILE'], filename)
+            photo_path_for_profile = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILES_S'], filename)
             # Сохранение файла в первую папку
             photo.save(photo_path)
             # Копирование файла во вторую папку
@@ -551,7 +591,7 @@ def add_student():
             cursor.close()
             conn.close()
             flash('Student added successfully', 'success')
-            return redirect(url_for('teacher_dashboard'))
+            return redirect(url_for('my_class'))
         else:
             print("Invalid file format")
             flash('Invalid file format', 'danger')
@@ -566,11 +606,12 @@ def add_student():
 def get_classes():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name FROM classes")
+    cursor.execute("SELECT id, name FROM classes WHERE name != 'No Class'")
     classes = cursor.fetchall()
     cursor.close()
     conn.close()
     return classes
+
 
 @app.route('/parent')
 @login_required
@@ -634,28 +675,60 @@ def register():
                 print(f"Error in {field}: {error}")
     return render_template('register.html', form=form)
 
+
+
+
 @app.route('/admin/teachers/edit/<int:teacher_id>', methods=['GET', 'POST'])
 @login_required
 @role_required('admin')
 def edit_teacher(teacher_id):
     form = TeacherEditForm()
-    form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
+    form.class_id.choices = [(row[0], row[1]) for row in get_classes() if row[1] != 'No Class']
 
     if request.method == 'POST' and form.validate_on_submit():
         last_name = form.last_name.data
         first_name = form.first_name.data
         middle_name = form.middle_name.data
-        class_id = form.class_id.data
-
-        print(f"Form data: last_name={last_name}, first_name={first_name}, middle_name={middle_name}, class_id={class_id}")
+        email = form.email.data
+        phone = form.phone.data
+        education = form.education.data
+        experience = form.experience.data
+        has_classes = request.form.get('has_classes') == 'on'
+        photo = form.photo.data
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
         try:
             # Обновление учителя в таблице teachers
-            cursor.execute("UPDATE teachers SET last_name = %s, first_name = %s, middle_name = %s, class_id = %s WHERE id = %s",
-                           (last_name, first_name, middle_name, class_id, teacher_id))
+            if photo and allowed_file(photo.filename):
+                face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
+                filename = f"{face_encoding}.jpg"
+                photo_path = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILES_T'], filename)
+                photo.save(photo_path)
+                cursor.execute("UPDATE teachers SET last_name = %s, first_name = %s, middle_name = %s, email = %s, phone = %s, education = %s, experience = %s, face_encoding = %s WHERE id = %s",
+                               (last_name, first_name, middle_name, email, phone, education, experience, face_encoding, teacher_id))
+            else:
+                cursor.execute("UPDATE teachers SET last_name = %s, first_name = %s, middle_name = %s, email = %s, phone = %s, education = %s, experience = %s WHERE id = %s",
+                               (last_name, first_name, middle_name, email, phone, education, experience, teacher_id))
+            cursor.close()
+
+            # Удаление старых связей с классами
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM teacher_classes WHERE teacher_id = %s", (teacher_id,))
+            cursor.close()
+
+            # Добавление новых связей с классами
+            cursor = conn.cursor()
+            if has_classes:
+                class_ids = form.class_id.data
+                for class_id in class_ids:
+                    cursor.execute("INSERT INTO teacher_classes (teacher_id, class_id, has_classes) VALUES (%s, %s, %s)",
+                                   (teacher_id, class_id, 1))
+            else:
+                cursor.execute("INSERT INTO teacher_classes (teacher_id, class_id, has_classes) VALUES (%s, %s, %s)",
+                               (teacher_id, 0, 0))  # Используем 0 для обозначения отсутствия класса
+            cursor.close()
 
             conn.commit()
             flash('Учитель обновлен успешно', 'success')
@@ -663,7 +736,6 @@ def edit_teacher(teacher_id):
             print(f"Error updating teacher: {str(e)}")
             flash(f'Ошибка при обновлении учителя: {str(e)}', 'danger')
         finally:
-            cursor.close()
             conn.close()
 
         return redirect(url_for('admin_teachers'))
@@ -671,31 +743,44 @@ def edit_teacher(teacher_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT teachers.*, users.username, users.password
+        SELECT teachers.*, GROUP_CONCAT(classes.id ORDER BY classes.id SEPARATOR ', ') as class_ids, MAX(teacher_classes.has_classes) as has_classes
         FROM teachers
-        JOIN users ON teachers.id = users.teacher_id
+        LEFT JOIN teacher_classes ON teachers.id = teacher_classes.teacher_id
+        LEFT JOIN classes ON teacher_classes.class_id = classes.id
         WHERE teachers.id = %s
+        GROUP BY teachers.id
     """, (teacher_id,))
     teacher = cursor.fetchone()
     cursor.close()
     conn.close()
 
-    # Отладочная информация
-    print("Teacher data fetched from the database:", teacher)
-
     if teacher:
         form.last_name.data = teacher[1]
         form.first_name.data = teacher[2]
         form.middle_name.data = teacher[3]
-        form.class_id.data = teacher[4]
+        form.email.data = teacher[4]
+        form.phone.data = teacher[5]
+        form.education.data = teacher[6]
+        form.experience.data = teacher[7]
+        class_ids = teacher[9].split(',') if teacher[9] else []
+        form.class_id.data = [int(class_id) for class_id in class_ids if class_id.isdigit()]
+        has_classes = teacher[10] == 1
 
-    return render_template('edit_teacher.html', form=form, teacher_id=teacher_id)
+        # Отладочная информация
+        print(f"Teacher ID: {teacher_id}")
+        print(f"Class IDs: {class_ids}")
+        print(f"Has Classes: {has_classes}")
+        print(f"Form Class ID Data: {form.class_id.data}")
+        print(f"Teacher Data: {teacher}")
+
+    return render_template('edit_teacher.html', form=form, teacher_id=teacher_id, teacher=teacher)
 
 
 @app.route('/admin/teachers/delete/<int:teacher_id>', methods=['POST'])
 @login_required
 @role_required('admin')
 def delete_teacher(teacher_id):
+    print(f"Deleting teacher with ID: {teacher_id}")
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -703,11 +788,17 @@ def delete_teacher(teacher_id):
         # Начинаем транзакцию
         conn.start_transaction()
 
+        # Удаление связанных записей из таблицы teacher_classes
+        cursor.execute("DELETE FROM teacher_classes WHERE teacher_id = %s", (teacher_id,))
+        print(f"Deleted related records from teacher_classes table with ID: {teacher_id}")
+
         # Удаление учителя из таблицы teachers
         cursor.execute("DELETE FROM teachers WHERE id = %s", (teacher_id,))
+        print(f"Deleted teacher from teachers table with ID: {teacher_id}")
 
         # Удаление связанной записи из таблицы users
         cursor.execute("DELETE FROM users WHERE teacher_id = %s", (teacher_id,))
+        print(f"Deleted teacher from users table with ID: {teacher_id}")
 
         # Подтверждаем транзакцию
         conn.commit()
@@ -717,64 +808,13 @@ def delete_teacher(teacher_id):
         # Откатываем транзакцию в случае ошибки
         conn.rollback()
         flash(f'Ошибка при удалении учителя: {str(e)}', 'danger')
+        print(f"Error deleting teacher: {str(e)}")
 
     finally:
         cursor.close()
         conn.close()
 
     return redirect(url_for('admin_teachers'))
-
-
-@app.route('/admin/students/edit/<int:student_id>', methods=['GET', 'POST'])
-@login_required
-@role_required('admin')
-def edit_student(student_id):
-    form = AddStudentForm()
-    form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
-
-    if request.method == 'POST' and form.validate_on_submit():
-        last_name = form.last_name.data
-        first_name = form.first_name.data
-        middle_name = form.middle_name.data
-        class_id = form.class_id.data
-        photo = form.photo.data
-
-        if photo and allowed_file(photo.filename):
-            face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
-            filename = f"{face_encoding}.jpg"
-            photo_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            photo_path_for_profile = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILE'], filename)
-            # Сохранение файла в первую папку
-            photo.save(photo_path)
-            # Копирование файла во вторую папку
-            shutil.copyfile(photo_path, photo_path_for_profile)
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("UPDATE students SET last_name = %s, first_name = %s, middle_name = %s, face_encoding = %s, class_id = %s WHERE id = %s",
-                           (last_name, first_name, middle_name, face_encoding, class_id, student_id))
-            conn.commit()
-            cursor.close()
-            conn.close()
-            flash('Ученик обновлен успешно', 'success')
-            return redirect(url_for('admin_students'))
-        else:
-            flash('Неверный формат файла', 'danger')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
-    student = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    if student:
-        form.last_name.data = student[1]
-        form.first_name.data = student[2]
-        form.middle_name.data = student[3]
-        form.class_id.data = student[5]
-
-    return render_template('edit_student.html', form=form, student_id=student_id)
-
 
 
 @app.route('/admin/students/delete/<int:student_id>', methods=['POST'])
@@ -821,7 +861,8 @@ def logout():
 def capture():
     global capture_active
     capture_active = True
-    threading.Thread(target=capture_and_recognize).start()
+    teacher_id = current_user.teacher_id
+    threading.Thread(target=capture_and_recognize, args=(teacher_id,)).start()
     return jsonify({"status": "Capturing and recognizing faces..."})
 
 @app.route('/stop_capture')
@@ -879,12 +920,20 @@ def get_attendance_statistics():
 @login_required
 @role_required('admin')
 def get_notifications():
-    # Логика для получения уведомлений
-    notifications = [
-        {"message": "Новый ученик добавлен."},
-        {"message": "Изменение данных учителя."}
-    ]
-    return jsonify(notifications)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT CONCAT('Новый ученик добавлен: ', students.last_name, ' ', students.first_name, ' ', students.middle_name) AS message
+        FROM students
+        ORDER BY students.id DESC
+        LIMIT 10
+    """)
+    notifications = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify([notification[0] for notification in notifications])
+
 
 @app.route('/get_recent_activities')
 @login_required
@@ -892,18 +941,32 @@ def get_notifications():
 def get_recent_activities():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), classes.name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id ORDER BY attendance.attendance_time DESC LIMIT 10")
+    cursor.execute("""
+        SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) AS student_name,
+               classes.name AS class_name,
+               teachers.last_name AS teacher_last_name,
+               teachers.first_name AS teacher_first_name,
+               teachers.middle_name AS teacher_middle_name,
+               attendance.attendance_time
+        FROM attendance
+        JOIN students ON attendance.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        JOIN teachers ON attendance.responsible_teacher_id = teachers.id
+        ORDER BY attendance.attendance_time DESC
+        LIMIT 10
+    """)
     activities = cursor.fetchall()
     cursor.close()
     conn.close()
 
     # Преобразование данных в список словарей для удобства
     activities_list = []
-    for name, class_name, attendance_time in activities:
+    for student_name, class_name, teacher_last_name, teacher_first_name, teacher_middle_name, attendance_time in activities:
         activities_list.append({
-            'name': name,
-            'class': class_name,
-            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')
+            'student_name': student_name,
+            'class_name': class_name,
+            'teacher_name': f"Ответственный - {teacher_last_name} {teacher_first_name} {teacher_middle_name}",
+            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')  # Преобразование datetime в строку
         })
 
     return jsonify(activities_list)
@@ -919,28 +982,29 @@ def search():
     cursor = conn.cursor()
 
     # Поиск учеников
-    cursor.execute("SELECT id, CONCAT(last_name, ' ', first_name, ' ', middle_name) as name, class_id FROM students WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) LIKE %s", ('%' + query + '%',))
-    students = cursor.fetchall()
-    for student in students:
-        results.append({"name": student[1], "type": "student", "class": student[2]})
-
-    # Поиск учителей
-    cursor.execute("SELECT id, CONCAT(last_name, ' ', first_name, ' ', middle_name) as name, class_id FROM teachers WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) LIKE %s", ('%' + query + '%',))
-    teachers = cursor.fetchall()
-    for teacher in teachers:
-        results.append({"name": teacher[1], "type": "teacher", "class": teacher[2]})
-
-    # Поиск классов
-    cursor.execute("SELECT id, name FROM classes WHERE name LIKE %s", ('%' + query + '%',))
-    classes = cursor.fetchall()
-    for cls in classes:
-        results.append({"name": cls[1], "type": "class"})
-
-    # Поиск посещаемости
-    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) as name, classes.name as class_name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id WHERE CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) LIKE %s", ('%' + query + '%',))
-    attendance = cursor.fetchall()
-    for record in attendance:
-        results.append({"name": record[0], "type": "attendance", "class": record[1], "time": record[2].strftime('%Y-%m-%d %H:%M:%S')})
+    cursor.execute("""
+        SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) AS student_name,
+               classes.name AS class_name,
+               teachers.last_name AS teacher_last_name,
+               teachers.first_name AS teacher_first_name,
+               teachers.middle_name AS teacher_middle_name,
+               attendance.attendance_time
+        FROM attendance
+        JOIN students ON attendance.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        JOIN teachers ON attendance.responsible_teacher_id = teachers.id
+        WHERE CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) LIKE %s
+        OR classes.name LIKE %s
+        OR CONCAT(teachers.last_name, ' ', teachers.first_name, ' ', teachers.middle_name) LIKE %s
+    """, ('%' + query + '%', '%' + query + '%', '%' + query + '%'))
+    search_results = cursor.fetchall()
+    for student_name, class_name, teacher_last_name, teacher_first_name, teacher_middle_name, attendance_time in search_results:
+        results.append({
+            'student_name': student_name,
+            'class_name': class_name,
+            'teacher_name': f"{teacher_last_name} {teacher_first_name} {teacher_middle_name}",
+            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')  # Преобразование datetime в строку
+        })
 
     cursor.close()
     conn.close()
@@ -975,7 +1039,48 @@ def update_settings():
 @login_required
 @role_required('teacher')
 def reports():
-    return render_template('teacher_reports.html')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    teacher_id = current_user.teacher_id
+
+    # Получаем данные о посещаемости для учеников, за съемку которых отвечал текущий учитель
+    cursor.execute("""
+        SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
+               classes.name, attendance.attendance_time
+        FROM attendance
+        JOIN students ON attendance.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        WHERE attendance.responsible_teacher_id = %s
+    """, (teacher_id,))
+    attendance_data = cursor.fetchall()
+
+    # Проверяем, есть ли у учителя классное руководство
+    cursor.execute("""
+        SELECT classes.id, classes.name
+        FROM teacher_classes
+        JOIN classes ON teacher_classes.class_id = classes.id
+        WHERE teacher_classes.teacher_id = %s AND teacher_classes.has_classes = 1
+    """, (teacher_id,))
+    classes = cursor.fetchall()
+
+    if classes:
+        class_ids = [class_id[0] for class_id in classes]
+        for class_id in class_ids:
+            cursor.execute("""
+                SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
+                       classes.name, attendance.attendance_time
+                FROM attendance
+                JOIN students ON attendance.student_id = students.id
+                JOIN classes ON students.class_id = classes.id
+                WHERE students.class_id = %s
+            """, (class_id,))
+            attendance_data.extend(cursor.fetchall())
+
+    cursor.close()
+    conn.close()
+
+    return render_template('teacher_reports.html', attendance_data=attendance_data)
+
 
 @app.route('/my_class')
 @login_required
@@ -984,26 +1089,32 @@ def my_class():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Получаем класс учителя
-    cursor.execute("SELECT class_id FROM teachers WHERE id = %s", (current_user.teacher_id,))
-    class_id = cursor.fetchone()[0]
+    # Получаем классы учителя
+    cursor.execute("SELECT class_id FROM teacher_classes WHERE teacher_id = %s", (current_user.teacher_id,))
+    class_ids = cursor.fetchall()
+    classes = []
 
-    # Получаем название класса
-    cursor.execute("SELECT name FROM classes WHERE id = %s", (class_id,))
-    class_name = cursor.fetchone()[0]
+    for class_id in class_ids:
+        class_id = class_id[0]
+        # Получаем название класса
+        cursor.execute("SELECT name FROM classes WHERE id = %s", (class_id,))
+        class_name = cursor.fetchone()[0]
 
-    # Получаем учеников, привязанных к этому классу
-    cursor.execute("""
-        SELECT id, last_name, first_name, middle_name, face_encoding
-        FROM students
-        WHERE class_id = %s
-    """, (class_id,))
-    students = cursor.fetchall()
+        # Получаем учеников, привязанных к этому классу
+        cursor.execute("""
+            SELECT id, last_name, first_name, middle_name, face_encoding
+            FROM students
+            WHERE class_id = %s
+        """, (class_id,))
+        students = cursor.fetchall()
+
+        classes.append({'class_id': class_id, 'class_name': class_name, 'students': students})
 
     cursor.close()
     conn.close()
 
-    return render_template('my_class.html', class_name=class_name, students=students)
+    return render_template('my_class.html', classes=classes)
+
 
 @app.route('/teacher_profile')
 @login_required
@@ -1012,10 +1123,12 @@ def teacher_profile():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT t.last_name, t.first_name, t.middle_name, c.name AS class_name, t.email, t.phone, t.education, t.experience
+        SELECT t.last_name, t.first_name, t.middle_name, GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS class_names, t.email, t.phone, t.education, t.experience
         FROM teachers t
-        JOIN classes c ON t.class_id = c.id
+        JOIN teacher_classes tc ON t.id = tc.teacher_id
+        JOIN classes c ON tc.class_id = c.id
         WHERE t.id = %s
+        GROUP BY t.id
     """, (current_user.teacher_id,))
     teacher_data = cursor.fetchone()
     cursor.close()
@@ -1038,6 +1151,439 @@ def teacher_profile():
                            teacher_phone=teacher_phone,
                            teacher_education=teacher_education,
                            teacher_experience=teacher_experience)
+
+@app.route('/class/<int:class_id>')
+@login_required
+@role_required('admin')
+def class_details(class_id):
+    conn = get_db_connection()
+
+    try:
+        # Получаем информацию о классе
+        cursor = conn.cursor(buffered=True)
+        cursor.execute("SELECT name FROM classes WHERE id = %s", (class_id,))
+        class_name = cursor.fetchone()[0]
+        cursor.close()
+
+        # Получаем классного руководителя
+        teachers = get_teachers()
+        teacher = next((t for t in teachers if t[10] == class_id and t[8] == 1), None)
+
+        # Получаем учеников класса
+        students = get_students()
+        class_students = [s for s in students if s[5] == class_id]
+
+    finally:
+        conn.close()
+
+    return render_template('class_details.html', class_name=class_name, teacher=teacher, students=class_students)
+
+
+def random_color():
+    return f"{random.randint(0, 255)}, {random.randint(0, 255)}, {random.randint(0, 255)}"
+
+@app.context_processor
+def inject_random_color():
+    return dict(random_color=random_color)
+
+@app.route('/admin/students/edit/<int:student_id>', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
+def edit_student(student_id):
+    form = AddStudentForm()
+    form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
+
+    if request.method == 'POST' and form.validate_on_submit():
+        last_name = form.last_name.data
+        first_name = form.first_name.data
+        middle_name = form.middle_name.data
+        class_id = form.class_id.data
+        photo = form.photo.data
+
+        if photo and allowed_file(photo.filename):
+            face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
+            filename = f"{face_encoding}.jpg"
+            photo_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            photo_path_for_profile = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILE'], filename)
+            # Сохранение файла в первую папку
+            photo.save(photo_path)
+            # Копирование файла во вторую папку
+            shutil.copyfile(photo_path, photo_path_for_profile)
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE students SET last_name = %s, first_name = %s, middle_name = %s, face_encoding = %s, class_id = %s WHERE id = %s",
+                           (last_name, first_name, middle_name, face_encoding, class_id, student_id))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            flash('Ученик обновлен успешно', 'success')
+            return redirect(url_for('admin_students'))
+        else:
+            flash('Неверный формат файла', 'danger')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+    student = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if student:
+        form.last_name.data = student[1]
+        form.first_name.data = student[2]
+        form.middle_name.data = student[3]
+        form.class_id.data = student[5]
+
+    return render_template('edit_student.html', form=form, student_id=student_id)
+
+def get_teachers_with_combined_classes():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT teachers.id, teachers.last_name, teachers.first_name, teachers.middle_name,
+               users.username, users.password, users.role,
+               GROUP_CONCAT(classes.name ORDER BY classes.name SEPARATOR ', ') as class_names,
+               MAX(teacher_classes.has_classes) as has_classes,
+               teachers.face_encoding,
+               teachers.email, teachers.phone, teachers.education, teachers.experience
+        FROM teachers
+        JOIN users ON teachers.id = users.teacher_id
+        LEFT JOIN teacher_classes ON teachers.id = teacher_classes.teacher_id
+        LEFT JOIN classes ON teacher_classes.class_id = classes.id
+        GROUP BY teachers.id, users.username, users.password, users.role
+    """)
+    teachers = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Отладочная информация
+    print("Teachers data fetched from the database:")
+    for teacher in teachers:
+        print(teacher)
+
+    return teachers
+
+@app.route('/schedule')
+@login_required
+@role_required('admin')
+def schedule():
+    return render_template('schedule.html')
+
+@app.route('/upload_schedule', methods=['POST'])
+@login_required
+@role_required('admin')
+def upload_schedule():
+    if 'file' not in request.files:
+        app.logger.error("No file part in the request")
+        return jsonify({"status": "error", "message": "No file part"})
+
+    file = request.files['file']
+    if file.filename == '':
+        app.logger.error("No selected file")
+        return jsonify({"status": "error", "message": "No selected file"})
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        app.logger.info(f"File saved to {file_path}")
+
+        # Parse the schedule from the uploaded file
+        schedule_data = parse_schedule(file_path)
+        if schedule_data:
+            app.logger.info("Schedule parsed successfully")
+            save_schedule_to_db(schedule_data)
+            return jsonify({"status": "success", "schedule": schedule_data})
+        else:
+            app.logger.error("Failed to parse schedule")
+            return jsonify({"status": "error", "message": "Failed to parse schedule"})
+    else:
+        app.logger.error("Invalid file type")
+        return jsonify({"status": "error", "message": "Invalid file type"})
+
+def save_schedule_to_db(schedule_data):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Удаление старых данных расписания
+    cursor.execute("DELETE FROM schedule")
+    conn.commit()
+
+    # Вставка новых данных расписания
+    for lesson in schedule_data:
+        cursor.execute("""
+            INSERT INTO schedule (date, day_of_week, lesson_number, time, class_name, subject, teacher, room)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (lesson['date'], lesson['day_of_week'], lesson['lesson_number'], lesson['time'], lesson['class_name'], lesson['subject'], lesson['teacher'], lesson['room']))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print("Schedule saved to database successfully")
+
+
+
+def parse_schedule(file_path):
+    class Schedule:
+        def __init__(self):
+            self.data = defaultdict(list)  # хранит расписание: {класс: список занятий}
+            self.current_date = None
+            self.current_day_of_week = None
+
+        def add_lesson(self, class_name, lesson_number, lesson_time, subject, teacher, room):
+            self.data[class_name].append({
+                "date": self.current_date,
+                "day_of_week": self.current_day_of_week,
+                "lesson_number": lesson_number,
+                "time": lesson_time,
+                "subject": subject,
+                "teacher": teacher,
+                "room": room
+            })
+
+        def to_dataframe(self):
+            # Создаем список всех занятий
+            all_lessons = []
+            for class_name, lessons in self.data.items():
+                for lesson in lessons:
+                    lesson['class_name'] = class_name
+                    all_lessons.append(lesson)
+
+            # Создаем DataFrame из списка занятий
+            df = pd.DataFrame(all_lessons)
+            return df
+
+        def __repr__(self):
+            return str(dict(self.data))
+
+    try:
+        # Чтение файла
+        df = pd.read_excel(file_path, sheet_name='Расписание')
+        print("Excel file read successfully")
+    except Exception as e:
+        print(f"Error reading Excel file: {e}")
+        return None
+
+    schedule = Schedule()
+
+    # Парсинг данных
+    for index, row in df.iterrows():
+        date_time = row['Дата / Время']
+
+        # Проверка на наличие даты и дня недели
+        date_match = re.match(r'(\d{2}\.\d{2}\.\d{4}) \((.+)\)', date_time)
+        if date_match:
+            schedule.current_date = date_match.group(1)
+            schedule.current_day_of_week = date_match.group(2)
+            print(f"Date and day of week set: {schedule.current_date}, {schedule.current_day_of_week}")
+            continue  # Пропуск строки с датой и днем недели
+
+        # Разделение строки на номер урока и время
+        lesson_info = date_time.split('\n')
+        lesson_number = int(lesson_info[0].split()[0])  # Извлекаем только цифру
+        lesson_time = lesson_info[1]
+
+        for class_name in row.index[2:]:
+            lesson_info = row[class_name]
+            if not pd.isna(lesson_info):
+                lesson_parts = lesson_info.split(", ")
+                subject = lesson_parts[0]
+                teacher = lesson_parts[-1]
+                room = lesson_parts[-2].replace("Каб.", "").strip()
+                schedule.add_lesson(class_name, lesson_number, lesson_time, subject, teacher, room)
+                print(f"Lesson added: {class_name}, {lesson_number}, {lesson_time}, {subject}, {teacher}, {room}")
+
+    # Преобразование расписания в DataFrame
+    schedule_df = schedule.to_dataframe()
+
+    # Настройка отображения всех строк и столбцов
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', None)  # Устанавливаем ширину экрана на максимальную
+
+    # Вывод расписания в виде таблицы
+    print("Schedule parsed successfully")
+    return schedule_df.to_dict(orient='records')
+
+
+
+@app.route('/get_schedule', methods=['GET'])
+@login_required
+@role_required('admin')
+def get_schedule():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM schedule")
+    schedule_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if schedule_data:
+        return jsonify({"status": "success", "schedule": schedule_data})
+    else:
+        return jsonify({"status": "error", "message": "No schedule data found"})
+
+
+@app.route('/get_filters', methods=['GET'])
+@login_required
+@role_required('admin')
+def get_filters():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Получение уникальных дней недели
+    cursor.execute("SELECT DISTINCT day_of_week FROM schedule")
+    days_of_week = [row['day_of_week'] for row in cursor.fetchall()]
+
+    # Получение уникальных классов
+    cursor.execute("SELECT DISTINCT class_name FROM schedule")
+    classes = [row['class_name'] for row in cursor.fetchall()]
+
+    # Получение уникальных времен
+    cursor.execute("SELECT DISTINCT time FROM schedule")
+    times = [row['time'] for row in cursor.fetchall()]
+
+    # Получение уникальных предметов
+    cursor.execute("SELECT DISTINCT subject FROM schedule")
+    subjects = [row['subject'] for row in cursor.fetchall()]
+
+    # Получение уникальных учителей
+    cursor.execute("SELECT DISTINCT teacher FROM schedule")
+    teachers = [row['teacher'] for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "status": "success",
+        "filters": {
+            "daysOfWeek": days_of_week,
+            "classes": classes,
+            "times": times,
+            "subjects": subjects,
+            "teachers": teachers,
+        }
+    })
+
+
+
+@app.route('/delete_schedule', methods=['POST'])
+@login_required
+@role_required('admin')
+def delete_schedule():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM schedule")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({"status": "success", "message": "Расписание успешно удалено"})
+
+@app.route('/teacher_schedule')
+@login_required
+@role_required('teacher')
+def teacher_schedule():
+    return render_template('teacher_schedule.html')
+
+
+@app.route('/get_teacher_schedule', methods=['GET'])
+@login_required
+@role_required('teacher')
+def get_teacher_schedule():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    teacher_id = current_user.teacher_id
+
+    # Получаем классы, к которым привязан учитель
+    cursor.execute("""
+        SELECT classes.name AS class_name
+        FROM teacher_classes
+        JOIN classes ON teacher_classes.class_id = classes.id
+        WHERE teacher_classes.teacher_id = %s AND teacher_classes.has_classes = 1
+    """, (teacher_id,))
+    class_names = [row['class_name'] for row in cursor.fetchall()]
+
+    if not class_names:
+        return jsonify({"status": "error", "message": "У вас нет привязанных классов."})
+
+    # Получаем расписание для этих классов
+    placeholders = ', '.join(['%s'] * len(class_names))
+    cursor.execute(f"""
+        SELECT *
+        FROM schedule
+        WHERE class_name IN ({placeholders})
+    """, tuple(class_names))
+    schedule_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if schedule_data:
+        return jsonify({"status": "success", "schedule": schedule_data})
+    else:
+        return jsonify({"status": "error", "message": "Расписание не найдено."})
+
+@app.route('/get_teacher_schedule_filters', methods=['GET'])
+@login_required
+@role_required('teacher')
+def get_teacher_schedule_filters():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    teacher_id = current_user.teacher_id
+
+    # Получаем классы, к которым привязан учитель
+    cursor.execute("""
+        SELECT classes.name AS class_name
+        FROM teacher_classes
+        JOIN classes ON teacher_classes.class_id = classes.id
+        WHERE teacher_classes.teacher_id = %s AND teacher_classes.has_classes = 1
+    """, (teacher_id,))
+    class_names = [row['class_name'] for row in cursor.fetchall()]
+
+    if not class_names:
+        return jsonify({"status": "error", "message": "У вас нет привязанных классов."})
+
+    # Получаем уникальные дни недели, временные интервалы, предметы и учителей для этих классов
+    cursor.execute("""
+        SELECT DISTINCT day_of_week
+        FROM schedule
+        WHERE class_name IN (%s)
+    """ % ','.join(['%s'] * len(class_names)), tuple(class_names))
+    days_of_week = [row['day_of_week'] for row in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT DISTINCT time
+        FROM schedule
+        WHERE class_name IN (%s)
+    """ % ','.join(['%s'] * len(class_names)), tuple(class_names))
+    times = [row['time'] for row in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT DISTINCT subject
+        FROM schedule
+        WHERE class_name IN (%s)
+    """ % ','.join(['%s'] * len(class_names)), tuple(class_names))
+    subjects = [row['subject'] for row in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT DISTINCT teacher
+        FROM schedule
+        WHERE class_name IN (%s)
+    """ % ','.join(['%s'] * len(class_names)), tuple(class_names))
+    teachers = [row['teacher'] for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "status": "success",
+        "filters": {
+            "daysOfWeek": days_of_week,
+            "classes": class_names,
+            "times": times,
+            "subjects": subjects,
+            "teachers": teachers,
+        }
+    })
 
 
 if __name__ == '__main__':

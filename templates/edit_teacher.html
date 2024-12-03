@@ -1,28 +1,101 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Редактировать учителя</h1>
-    <form method="POST" enctype="multipart/form-data" class="space-y-4">
-        {{ form.hidden_tag() }}
-        <div>
-            {{ form.last_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-            {{ form.last_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
-        </div>
-        <div>
-            {{ form.first_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-            {{ form.first_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
-        </div>
-        <div>
-            {{ form.middle_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-            {{ form.middle_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
-        </div>
-        <div>
-            {{ form.class_id.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-            {{ form.class_id(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
-        </div>
-        <div>
-            {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline") }}
-        </div>
-    </form>
-    <a href="{{ url_for('admin_teachers') }}" class="block text-center text-blue-500 hover:underline mt-4">Вернуться к списку учителей</a>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<style>
+    .alert {
+        display: none;
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    .alert-danger {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+</style>
+<script>
+    $(document).ready(function () {
+        // Проверка количества выбранных классов
+        $('form').submit(function (event) {
+            var classCheckboxes = $('input[name="class_id"]:checked');
+            if (classCheckboxes.length > 2) {
+                $('.alert-danger').text('Можно выбрать не более двух классов.').show();
+                event.preventDefault();
+            } else {
+                $('.alert-danger').hide();
+            }
+        });
+
+        // Управление видимостью элемента выбора классов
+        $('#has_classes').change(function () {
+            if ($(this).is(':checked')) {
+                $('#class_selection').show();
+            } else {
+                $('#class_selection').hide();
+            }
+        });
+    });
+</script>
+
+<body class="bg-gray-100 text-gray-800 font-sans">
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Редактировать учителя</h1>
+        <div class="alert alert-danger"></div>
+        <form method="POST" enctype="multipart/form-data" class="space-y-4">
+            {{ form.hidden_tag() }}
+            <div>
+                {{ form.last_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.last_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.first_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.first_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.middle_name.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.middle_name(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.email.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.email(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.phone.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.phone(size=20, class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.education.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.education(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.experience.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.experience(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                {{ form.photo.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {{ form.photo(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
+            </div>
+            <div>
+                <label>
+                    <input type="checkbox" id="has_classes" name="has_classes" {% if teacher.has_classes == 1 %}checked{% endif %}> Имеет классное руководство
+                </label>
+            </div>
+            <div id="class_selection" {% if teacher.has_classes == 0 %}style="display:none;" {% endif %}>
+                {{ form.class_id.label(class="block text-gray-700 text-sm font-bold mb-2") }}
+                {% for subfield in form.class_id %}
+                <div>
+                    {{ subfield() }}
+                    {{ subfield.label }}
+                </div>
+                {% endfor %}
+            </div>
+            <div>
+                {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline") }}
+            </div>
+        </form>
+        <a href="{{ url_for('admin_teachers') }}" class="block text-center text-blue-500 hover:underline mt-4">Вернуться к списку учителей</a>
+    </div>
+</body>
 {% endblock %}

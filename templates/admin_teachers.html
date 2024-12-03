@@ -13,6 +13,44 @@
     .filter-checkbox {
         margin-right: 10px;
     }
+
+    .alert {
+        opacity: 0;
+        transform: translateY(20px);
+        transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        position: fixed;
+        top: 75%;
+        /* Центрируем по вертикали */
+        left: 35%;
+        /* Центрируем по горизонтали */
+        transform: translate(-50%, -50%);
+        /* Сдвигаем на половину ширины и высоты для центрирования */
+        z-index: 1000;
+        padding: 10px 20px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        width: 80%;
+        /* Ширина уведомления */
+        max-width: 600px;
+        /* Максимальная ширина уведомления */
+        text-align: center;
+        /* Центрируем текст */
+    }
+
+    .alert.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .alert-success {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .alert-danger {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
 </style>
 <script>
     $(document).ready(function () {
@@ -51,6 +89,39 @@
             });
             table.find('th').eq(index).toggle(isChecked);
         });
+
+        // Функция для отображения уведомлений
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} show`;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 500);
+            }, 2000);
+        }
+
+        // Проверка количества выбранных классов
+        $('form').submit(function (event) {
+            var classCheckboxes = $('input[name="class_id"]:checked');
+            if (classCheckboxes.length > 2) {
+                showAlert('Можно выбрать не более двух классов.', 'danger').show();
+                event.preventDefault();
+            }
+        });
+
+        // Управление видимостью элемента выбора классов
+        $('#has_classes').change(function () {
+            if ($(this).is(':checked')) {
+                $('#class_selection').show();
+            } else {
+                $('#class_selection').hide();
+            }
+        });
     });
 </script>
 </head>
@@ -58,6 +129,7 @@
 <body class="bg-gray-100 text-gray-800 font-sans">
     <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
         <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Учителя</h1>
+        <div class="alert alert-danger"></div>
         <form method="POST" enctype="multipart/form-data" class="space-y-4">
             {{ form.hidden_tag() }}
             <div>
@@ -91,9 +163,18 @@
                 text-gray-700 leading-tight focus:outline-none focus:shadow-outline") }}
             </div>
             <div>
+                <label>
+                    <input type="checkbox" id="has_classes" name="has_classes" checked> Имеет классное руководство
+                </label>
+            </div>
+            <div id="class_selection">
                 {{ form.class_id.label(class="block text-gray-700 text-sm font-bold mb-2") }}
-                {{ form.class_id(class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700
-                leading-tight focus:outline-none focus:shadow-outline") }}
+                {% for subfield in form.class_id %}
+                <div>
+                    {{ subfield() }}
+                    {{ subfield.label }}
+                </div>
+                {% endfor %}
             </div>
             <div>
                 {{ form.submit(class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded
@@ -106,7 +187,7 @@
                     <th class="py-2 px-4 border-b">Фамилия <span class="sort-icon asc" data-index="0">↑</span></th>
                     <th class="py-2 px-4 border-b">Имя <span class="sort-icon asc" data-index="1">↑</span></th>
                     <th class="py-2 px-4 border-b">Отчество <span class="sort-icon asc" data-index="2">↑</span></th>
-                    <th class="py-2 px-4 border-b">Класс <span class="sort-icon asc" data-index="3">↑</span></th>
+                    <th class="py-2 px-4 border-b">Классы <span class="sort-icon asc" data-index="3">↑</span></th>
                     <th class="py-2 px-4 border-b">Действия</th>
                 </tr>
             </thead>
@@ -116,7 +197,13 @@
                     <td class="py-2 px-4 border-b">{{ teacher[1] }}</td>
                     <td class="py-2 px-4 border-b">{{ teacher[2] }}</td>
                     <td class="py-2 px-4 border-b">{{ teacher[3] }}</td>
-                    <td class="py-2 px-4 border-b">{{ teacher[8] }}</td>
+                    <td class="py-2 px-4 border-b">
+                        {% if teacher[7] == 'No Class' %}
+                            Нет кл. рук-ва
+                        {% else %}
+                            {{ teacher[7] }}
+                        {% endif %}
+                    </td>
                     <td class="py-2 px-4 border-b">
                         <a href="{{ url_for('edit_teacher', teacher_id=teacher[0]) }}"
                             class="text-blue-500 hover:underline">Редактировать</a>
@@ -135,9 +222,12 @@
             <label><input type="checkbox" class="filter-checkbox" data-index="0" checked> Фамилия</label>
             <label><input type="checkbox" class="filter-checkbox" data-index="1" checked> Имя</label>
             <label><input type="checkbox" class="filter-checkbox" data-index="2" checked> Отчество</label>
-            <label><input type="checkbox" class="filter-checkbox" data-index="3" checked> Класс</label>
+            <label><input type="checkbox" class="filter-checkbox" data-index="3" checked> Классы</label>
             <label><input type="checkbox" class="filter-checkbox" data-index="4" checked> Действия</label>
         </div>
         <a href="{{ url_for('admin_dashboard') }}"
             class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
         {% endblock %}
+</body>
+
+</html>

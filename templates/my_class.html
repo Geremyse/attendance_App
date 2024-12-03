@@ -1,12 +1,31 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мой Класс</title>
-    <link href="https://fonts.googleapis.com/css2?family=Prata:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+        <h1 id="class-name" class="text-4xl font-bold text-center text-gray-800 mb-8">Мой Класс: {{ classes[0]['class_name'] }}</h1>
+        <div class="student-container" id="student-container">
+            {% for student in classes[0]['students'] %}
+                <div class="student-card border p-4 rounded-lg shadow-md transform transition-transform duration-300 hover:scale-105">
+                    <div class="student-circle w-32 h-32 mx-auto bg-gray-200 rounded-full overflow-hidden">
+                        <img src="{{ url_for('static', filename='students_photo/' + student[4] + '.jpg') }}" alt="{{ student[1] }} {{ student[2] }} {{ student[3] }}" class="w-full h-full object-cover">
+                    </div>
+                    <h2 class="text-xl font-semibold text-center mt-4">{{ student[1] }} {{ student[2] }} {{ student[3] }}</h2>
+                </div>
+            {% endfor %}
+            <!-- Добавление карточки для добавления нового ученика -->
+            <a href="{{ url_for('add_student') }}" class="student-card add-student-card border p-4 rounded-lg shadow-md flex flex-col items-center transform transition-transform duration-300 hover:scale-105">
+                <div class="student-circle w-32 h-32 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center">
+                    <img src="{{ url_for('static', filename='path/to/your/add_student_image.png') }}" alt="Добавить ученика" class="w-full h-full object-cover">
+                </div>
+                <h2 class="text-xl font-semibold text-center mt-4">Добавить ученика</h2>
+            </a>
+        </div>
+        {% if classes|length > 1 %}
+            <button id="toggle-class-button" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">Посмотреть следующий класс</button>
+        {% endif %}
+        <a href="{{ url_for('teacher_dashboard') }}" class="back-button block text-center text-blue-500 hover:underline mt-4">Вернуться на главную</a>
+    </div>
+
     <style>
         .student-container {
             display: flex;
@@ -16,34 +35,60 @@
         }
 
         .student-card {
-            width: 250px;
             text-align: center;
+            text-decoration: none;
+            color: inherit;
+            width: 250px;
         }
 
-        .student-card img {
-            border-radius: 50%;
-            width: 200px;
-            height: 200px;
+        .student-circle img {
+            width: 100%;
+            height: 100%;
             object-fit: cover;
         }
 
-        .student-card h2 {
-            font-size: 1.2em;
-            margin-top: 10px;
+        .add-student-card {
+            background-color: rgba(0, 123, 255, 0.5);
+            transition: background-color 0.3s ease;
+        }
+
+        .add-student-card:hover {
+            background-color: rgba(0, 123, 255, 1);
         }
     </style>
-</head>
-<body class="bg-gray-100 text-gray-800 font-sans">
-    <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
-        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Мой Класс: {{ class_name }}</h1>
-        <div class="student-container">
-            {% for student in students %}
-                <div class="student-card">
-                    <img src="{{ url_for('static', filename='students_photo/' + student[4] + '.jpg') }}" alt="{{ student[1] }} {{ student[2] }} {{ student[3] }}">
-                    <h2>{{ student[1] }} {{ student[2] }} {{ student[3] }}</h2>
+
+    <script>
+        const teacherClasses = JSON.parse('{{ classes|tojson|safe }}');
+        let currentClassIndex = 0;
+        const classNameElement = document.getElementById('class-name');
+        const studentContainer = document.getElementById('student-container');
+        const toggleClassButton = document.getElementById('toggle-class-button');
+
+        function updateClassDisplay() {
+            const currentClass = teacherClasses[currentClassIndex];
+            classNameElement.textContent = `Мой Класс: ${currentClass.class_name}`;
+            studentContainer.innerHTML = currentClass.students.map(student => `
+                <div class="student-card border p-4 rounded-lg shadow-md transform transition-transform duration-300 hover:scale-105">
+                    <div class="student-circle w-32 h-32 mx-auto bg-gray-200 rounded-full overflow-hidden">
+                        <img src="{{ url_for('static', filename='students_photo/') }}${student[4]}.jpg" alt="${student[1]} ${student[2]} ${student[3]}" class="w-full h-full object-cover">
+                    </div>
+                    <h2 class="text-xl font-semibold text-center mt-4">${student[1]} ${student[2]} ${student[3]}</h2>
                 </div>
-            {% endfor %}
-        </div>
-    </div>
-</body>
-</html>
+            `).join('') + `
+            <a href="{{ url_for('add_student') }}" class="student-card add-student-card border p-4 rounded-lg shadow-md flex flex-col items-center transform transition-transform duration-300 hover:scale-105">
+                <div class="student-circle w-32 h-32 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center">
+                    <img src="{{ url_for('static', filename='students_photo/list-add-clipart-md.png') }}" alt="Добавить ученика" class="w-full h-full object-cover">
+                </div>
+                <h2 class="text-xl font-semibold text-center mt-4">Добавить ученика</h2>
+            </a>`;
+            toggleClassButton.textContent = currentClassIndex === teacherClasses.length - 1 ? 'Посмотреть предыдущий класс' : 'Посмотреть следующий класс';
+        }
+
+        if (teacherClasses.length > 1) {
+            toggleClassButton.addEventListener('click', () => {
+                currentClassIndex = (currentClassIndex + 1) % teacherClasses.length;
+                updateClassDisplay();
+            });
+        }
+    </script>
+{% endblock %}

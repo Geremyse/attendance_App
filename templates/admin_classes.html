@@ -11,19 +11,67 @@
             <input type="submit" value="Добавить класс" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
         </div>
     </form>
-    <table class="min-w-full bg-white mt-6">
-        <thead>
-            <tr>
-                <th class="py-2 px-4 border-b">Название класса</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for class in classes %}
-            <tr>
-                <td class="py-2 px-4 border-b">{{ class[1] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="class-container">
+        {% for class in classes %}
+            {% if class[1] != 'No Class' %}
+                <a href="{{ url_for('class_details', class_id=class[0]) }}" class="class-card">
+                    <div class="class-circle">
+                        <span>{{ class[1] }}</span>
+                    </div>
+                </a>
+            {% endif %}
+        {% endfor %}
+    </div>
     <a href="{{ url_for('admin_dashboard') }}" class="block text-center text-blue-500 hover:underline mt-4">Вернуться к панели администратора</a>
+
+    <style>
+        .class-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .class-card {
+            text-align: center;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .class-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            transition: transform 0.3s ease, background-color 0.3s ease;
+        }
+
+        .class-circle:hover {
+            transform: scale(1.1);
+        }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const classCircles = document.querySelectorAll('.class-circle');
+            const colors = ['rgba(255, 0, 0, 0.5)', 'rgba(0, 255, 0, 0.5)', 'rgba(0, 0, 255, 0.5)', 'rgba(255, 255, 0, 0.5)', 'rgba(255, 0, 255, 0.5)', 'rgba(0, 255, 255, 0.5)'];
+
+            classCircles.forEach((circle, index) => {
+                const color = colors[index % colors.length];
+                const solidColor = color.replace('0.5', '1');
+                circle.style.backgroundColor = color;
+                circle.addEventListener('mouseenter', function () {
+                    circle.style.backgroundColor = solidColor;
+                });
+                circle.addEventListener('mouseleave', function () {
+                    circle.style.backgroundColor = color;
+                });
+            });
+        });
+    </script>
 {% endblock %}

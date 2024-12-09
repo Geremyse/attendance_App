@@ -45,6 +45,7 @@ class TeacherRegistrationForm(FlaskForm):
     password = PasswordField('Пароль', validators=[DataRequired(), Length(min=6)])
     confirm_password = PasswordField('Подтвердите пароль', validators=[DataRequired(), EqualTo('password')])
     class_id = MultiCheckboxField('Классы', coerce=int, validators=[validate_class_count])
+    photo = FileField('Фото', validators=[DataRequired()])
     submit = SubmitField('Добавить')
 
 

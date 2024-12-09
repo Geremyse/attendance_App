@@ -78,7 +78,7 @@
 <body class="bg-gray-100 text-gray-800 font-sans">
     <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
         <div class="profile-header">
-            <img src="{{ url_for('static', filename='images/teacher_photo.jpg') }}" alt="Фото учителя">
+            <img src="{{ url_for('static', filename='teachers_photo/' + teacher_photo + '.jpg') }}" alt="Фото учителя">
             <h1 class="text-3xl font-bold">{{ teacher_name }}</h1>
         </div>
         <div class="profile-info">

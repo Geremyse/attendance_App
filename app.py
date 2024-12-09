@@ -21,6 +21,7 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 from collections import defaultdict
 import re
+from flask_bcrypt import Bcrypt
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -39,6 +40,8 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['UPLOAD_FOLDER_FOR_PROFILES_S'] = UPLOAD_FOLDER_FOR_PROFILES_S  # Папка для сохранения фотографий профиля учеников
 app.config['UPLOAD_FOLDER_FOR_PROFILES_T'] = UPLOAD_FOLDER_FOR_PROFILES_T  # Папка для сохранения фотографий профиля учителей
+
+bcrypt = Bcrypt(app)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS, {'xlsx'}
@@ -377,6 +380,10 @@ def admin_teachers():
         username = form.username.data
         password = form.password.data
         has_classes = request.form.get('has_classes') == 'on'
+        photo = form.photo.data
+
+        # Хеширование пароля
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -388,11 +395,19 @@ def admin_teachers():
             flash('Имя пользователя уже существует', 'danger')
             return redirect(url_for('admin_teachers'))
 
-        cursor.execute("INSERT INTO teachers (last_name, first_name, middle_name) VALUES (%s, %s, %s)",
-                       (last_name, first_name, middle_name))
+        # Handle photo upload
+        face_encoding = None
+        if photo and allowed_file(photo.filename):
+            face_encoding = random.randint(100000, 999999)  # Генерация случайного числа для face_encoding
+            filename = f"{face_encoding}.jpg"
+            photo_path = os.path.join(app.config['UPLOAD_FOLDER_FOR_PROFILES_T'], filename)
+            photo.save(photo_path)
+
+        cursor.execute("INSERT INTO teachers (last_name, first_name, middle_name, face_encoding) VALUES (%s, %s, %s, %s)",
+                       (last_name, first_name, middle_name, face_encoding))
         teacher_id = cursor.lastrowid
         cursor.execute("INSERT INTO users (username, password, role, teacher_id) VALUES (%s, %s, %s, %s)",
-                       (username, password, 'teacher', teacher_id))
+                       (username, hashed_password, 'teacher', teacher_id))
 
         if has_classes:
             class_ids = form.class_id.data
@@ -411,7 +426,6 @@ def admin_teachers():
 
     teachers = get_teachers_with_combined_classes()
     return render_template('admin_teachers.html', form=form, teachers=teachers)
-
 
 
 @app.route('/admin/students', methods=['GET', 'POST'])
@@ -495,7 +509,7 @@ def get_teachers():
                MAX(teacher_classes.has_classes) as has_classes,
                teachers.face_encoding,
                teacher_classes.class_id,
-               teachers.email, teachers.phone, teachers.education, teachers.experience
+               teachers.email, teachers.phone, teachers.education, teachers.experience, teachers.face_encoding
         FROM teachers
         JOIN users ON teachers.id = users.teacher_id
         LEFT JOIN teacher_classes ON teachers.id = teacher_classes.teacher_id
@@ -624,55 +638,40 @@ def parent_dashboard():
 def login():
     form = LoginForm()
     if form.validate_on_submit():
-        print("Form validated successfully")
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE username = %s", (form.username.data,))
         user = cursor.fetchone()
         cursor.close()
         conn.close()
-        if user and user[2] == form.password.data:
-            print("User authenticated successfully")
+        if user and bcrypt.check_password_hash(user[2], form.password.data):
             login_user(User(user[0], user[1], user[2], user[3], user[4], user[5]))
             return redirect(url_for('index'))
         else:
-            print("Login failed")
             flash('Login Unsuccessful. Check username and password', 'danger')
-    else:
-        print("Form validation failed")
-        for field, errors in form.errors.items():
-            for error in errors:
-                print(f"Error in {field}: {error}")
     return render_template('login.html', form=form)
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegisterForm()
     if form.validate_on_submit():
-        print("Form validated successfully")
+        hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE username = %s", (form.username.data,))
         user = cursor.fetchone()
         if user:
-            print("User already exists")
             flash('Username already exists', 'danger')
         else:
-            print("Creating new user")
             role = form.role.data  # Получаем выбранную роль из формы
-            print(f"Role: {role}")
             cursor.execute("INSERT INTO users (username, password, role, last_name, first_name, middle_name) VALUES (%s, %s, %s, %s, %s, %s)",
-                           (form.username.data, form.password.data, role, form.last_name.data, form.first_name.data, form.middle_name.data))
+                           (form.username.data, hashed_password, role, form.last_name.data, form.first_name.data, form.middle_name.data))
             conn.commit()
             flash('Account created successfully', 'success')
             return redirect(url_for('login'))
         cursor.close()
         conn.close()
-    else:
-        print("Form validation failed")
-        for field, errors in form.errors.items():
-            for error in errors:
-                print(f"Error in {field}: {error}")
     return render_template('register.html', form=form)
 
 
@@ -1123,7 +1122,7 @@ def teacher_profile():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT t.last_name, t.first_name, t.middle_name, GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS class_names, t.email, t.phone, t.education, t.experience
+        SELECT t.last_name, t.first_name, t.middle_name, GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS class_names, t.email, t.phone, t.education, t.experience, t.face_encoding
         FROM teachers t
         JOIN teacher_classes tc ON t.id = tc.teacher_id
         JOIN classes c ON tc.class_id = c.id
@@ -1141,8 +1140,11 @@ def teacher_profile():
         teacher_phone = teacher_data[5]
         teacher_education = teacher_data[6]
         teacher_experience = teacher_data[7]
+        teacher_photo = teacher_data[8]
     else:
-        teacher_name = teacher_class = teacher_email = teacher_phone = teacher_education = teacher_experience = ""
+        teacher_name = teacher_class = teacher_email = teacher_phone = teacher_education = teacher_experience = teacher_photo = ""
+
+    print("Fetced data: ", teacher_data)
 
     return render_template('teacher_profile.html',
                            teacher_name=teacher_name,
@@ -1150,7 +1152,8 @@ def teacher_profile():
                            teacher_email=teacher_email,
                            teacher_phone=teacher_phone,
                            teacher_education=teacher_education,
-                           teacher_experience=teacher_experience)
+                           teacher_experience=teacher_experience,
+                           teacher_photo = teacher_photo)
 
 @app.route('/class/<int:class_id>')
 @login_required

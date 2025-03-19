@@ -5,7 +5,7 @@
         <h1 id="class-name" class="text-4xl font-bold text-center text-gray-800 mb-8">Мой Класс: {{ classes[0]['class_name'] }}</h1>
         <div class="student-container" id="student-container">
             {% for student in classes[0]['students'] %}
-                <div class="student-card border p-4 rounded-lg shadow-md transform transition-transform duration-300 hover:scale-105">
+                <div class="student-card border p-4 rounded-lg shadow-md transform transition-transform duration-300 hover:scale-105" data-student-id="{{ student[0] }}" title="Нажмите правой кнопкой мыши, чтобы посмотреть статистику посещений">
                     <div class="student-circle w-32 h-32 mx-auto bg-gray-200 rounded-full overflow-hidden">
                         <img src="{{ url_for('static', filename='students_photo/' + student[4] + '.jpg') }}" alt="{{ student[1] }} {{ student[2] }} {{ student[3] }}" class="w-full h-full object-cover">
                     </div>
@@ -15,7 +15,7 @@
             <!-- Добавление карточки для добавления нового ученика -->
             <a href="{{ url_for('add_student') }}" class="student-card add-student-card border p-4 rounded-lg shadow-md flex flex-col items-center transform transition-transform duration-300 hover:scale-105">
                 <div class="student-circle w-32 h-32 bg-gray-200 rounded-full overflow-hidden flex items-center justify-center">
-                    <img src="{{ url_for('static', filename='path/to/your/add_student_image.png') }}" alt="Добавить ученика" class="w-full h-full object-cover">
+                    <img src="{{ url_for('static', filename='images/add_student_image.png') }}" alt="Добавить ученика" class="w-full h-full object-cover">
                 </div>
                 <h2 class="text-xl font-semibold text-center mt-4">Добавить ученика</h2>
             </a>
@@ -24,6 +24,20 @@
             <button id="toggle-class-button" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">Посмотреть следующий класс</button>
         {% endif %}
         <a href="{{ url_for('teacher_dashboard') }}" class="back-button block text-center text-blue-500 hover:underline mt-4">Вернуться на главную</a>
+    </div>
+
+    <!-- Всплывающее окно -->
+    <div id="popup" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg text-center">
+            <h2 class="text-2xl font-bold mb-4">Статистика посещений</h2>
+            <canvas id="attendanceChart" width="400" height="200"></canvas>
+            <button id="closePopup" class="mt-4 bg-red-500 text-white px-4 py-2 rounded">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Индикатор загрузки -->
+    <div id="loading" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="spinner border-4 border-t-4 border-gray-200 rounded-full w-12 h-12"></div>
     </div>
 
     <style>
@@ -55,20 +69,63 @@
         .add-student-card:hover {
             background-color: rgba(0, 123, 255, 1);
         }
+
+        .hidden {
+            display: none;
+        }
+
+        .spinner {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         const teacherClasses = JSON.parse('{{ classes|tojson|safe }}');
         let currentClassIndex = 0;
         const classNameElement = document.getElementById('class-name');
         const studentContainer = document.getElementById('student-container');
         const toggleClassButton = document.getElementById('toggle-class-button');
+        const popup = document.getElementById('popup');
+        const closePopupButton = document.getElementById('closePopup');
+        const loading = document.getElementById('loading');
+        const attendanceChartCanvas = document.getElementById('attendanceChart');
+        const attendanceChart = new Chart(attendanceChartCanvas, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Посещаемость',
+                    data: [],
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
 
         function updateClassDisplay() {
             const currentClass = teacherClasses[currentClassIndex];
             classNameElement.textContent = `Мой Класс: ${currentClass.class_name}`;
             studentContainer.innerHTML = currentClass.students.map(student => `
-                <div class="student-card border p-4 rounded-lg shadow-md transform transition-transform duration-300 hover:scale-105">
+                <div class="student-card border p-4 rounded-lg shadow-md transform transition-transform duration-300 hover:scale-105" data-student-id="${student[0]}" title="Нажмите правой кнопкой мыши, чтобы посмотреть статистику посещений">
                     <div class="student-circle w-32 h-32 mx-auto bg-gray-200 rounded-full overflow-hidden">
                         <img src="{{ url_for('static', filename='students_photo/') }}${student[4]}.jpg" alt="${student[1]} ${student[2]} ${student[3]}" class="w-full h-full object-cover">
                     </div>
@@ -90,5 +147,27 @@
                 updateClassDisplay();
             });
         }
+
+        studentContainer.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            const studentCard = event.target.closest('.student-card');
+            if (studentCard) {
+                const studentId = studentCard.getAttribute('data-student-id');
+                loading.classList.remove('hidden');
+                fetch(`/get_attendance_stats/${studentId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        attendanceChart.data.labels = data.labels;
+                        attendanceChart.data.datasets[0].data = data.data;
+                        attendanceChart.update();
+                        loading.classList.add('hidden');
+                        popup.classList.remove('hidden');
+                    });
+            }
+        });
+
+        closePopupButton.addEventListener('click', () => {
+            popup.classList.add('hidden');
+        });
     </script>
 {% endblock %}

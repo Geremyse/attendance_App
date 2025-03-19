@@ -154,6 +154,18 @@ def capture_and_recognize(teacher_id):
 
 
 # Запись данных о посещаемости
+def get_day_of_week_in_russian(day_of_week_english):
+    days_mapping = {
+        'Monday': 'Понедельник',
+        'Tuesday': 'Вторник',
+        'Wednesday': 'Среда',
+        'Thursday': 'Четверг',
+        'Friday': 'Пятница',
+        'Saturday': 'Суббота',
+        'Sunday': 'Воскресенье'
+    }
+    return days_mapping.get(day_of_week_english, day_of_week_english)
+
 def record_attendance(student_name, teacher_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -166,22 +178,54 @@ def record_attendance(student_name, teacher_id):
         return
 
     student_id = student[0]
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    current_date = datetime.now().strftime('%Y-%m-%d')
+    current_time = datetime.now()
+    current_date = current_time.strftime('%Y-%m-%d')
+    current_time_str = current_time.strftime('%H:%M:%S')
+    current_day_of_week_english = current_time.strftime('%A')  # Получаем текущий день недели на английском
+    current_day_of_week = get_day_of_week_in_russian(current_day_of_week_english)  # Переводим на русский
 
-    # Проверка, была ли уже записана посещаемость для данного ученика в текущий день
-    cursor.execute("SELECT * FROM attendance WHERE student_id = %s AND DATE(attendance_time) = %s", (student_id, current_date))
+    # Определение номера урока на основе времени и дня недели
+    cursor.execute("SELECT lesson_number, time FROM schedule WHERE day_of_week = %s", (current_day_of_week,))
+    schedule_rows = cursor.fetchall()
+    lesson_number = None
+
+    for row in schedule_rows:
+        time_range = row[1].strip()  # Удаляем лишние пробелы
+        start_time_str, end_time_str = time_range.split('-')
+        start_time_str = start_time_str.strip()  # Удаляем лишние пробелы
+        end_time_str = end_time_str.strip()  # Удаляем лишние пробелы
+
+        try:
+            start_time = datetime.strptime(start_time_str, '%H:%M').time()
+            end_time = datetime.strptime(end_time_str, '%H:%M').time()
+            current_time_obj = datetime.strptime(current_time_str, '%H:%M:%S').time()
+
+            if start_time <= current_time_obj <= end_time:
+                lesson_number = row[0]
+                break
+        except ValueError as e:
+            print(f"Error parsing time range {time_range}: {e}")
+
+    if lesson_number is None:
+        print(f"No lesson found for time {current_time_str} on day {current_day_of_week}")
+        cursor.close()
+        conn.close()
+        return
+
+    # Проверка, была ли уже записана посещаемость для данного ученика в текущий день и урок
+    cursor.execute("SELECT * FROM attendance WHERE student_id = %s AND DATE(attendance_time) = %s AND lesson_number = %s", (student_id, current_date, lesson_number))
     existing_record = cursor.fetchone()
 
     if not existing_record:
-        query = "INSERT INTO attendance (student_id, attendance_time, responsible_teacher_id) VALUES (%s, %s, %s)"
-        values = (student_id, current_time, teacher_id)
+        query = "INSERT INTO attendance (student_id, attendance_time, responsible_teacher_id, lesson_number) VALUES (%s, %s, %s, %s)"
+        values = (student_id, current_time, teacher_id, lesson_number)
         cursor.execute(query, values)
         conn.commit()
         print(f"Attendance recorded for student {student_name} at {current_time}")
 
-        # Отправка обновления через WebSocket
-        socketio.emit('attendance_update', {'data': [(student_name, current_time)]})
+        # Преобразование current_time в строку перед отправкой через WebSocket
+        current_time_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+        socketio.emit('attendance_update', {'data': [(student_name, current_time_str)]})
 
     cursor.close()
     conn.close()
@@ -527,36 +571,24 @@ def get_teachers():
     return teachers
 
 
-""" @app.route('/teacher')
-@login_required
-@role_required('teacher')
-def teacher_dashboard():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), classes.name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id")
-    attendance_data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('teacher_dashboard.html', attendance_data=attendance_data) """
-
 @app.route('/teacher')
 @login_required
 @role_required('teacher')
 def teacher_dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)  # Используем буферизованный курсор
     teacher_id = current_user.teacher_id
 
     # Получаем данные о посещаемости для учеников, за съемку которых отвечал текущий учитель
     cursor.execute("""
         SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
-               classes.name, attendance.attendance_time
+               classes.name, attendance.attendance_time, attendance.lesson_number
         FROM attendance
         JOIN students ON attendance.student_id = students.id
         JOIN classes ON students.class_id = classes.id
         WHERE attendance.responsible_teacher_id = %s
         ORDER BY attendance.attendance_time DESC
-        LIMIT 10
+        LIMIT 5
     """, (teacher_id,))
     attendance_data = cursor.fetchall()
 
@@ -568,11 +600,42 @@ def teacher_dashboard():
     """, (teacher_id,))
     has_classes = cursor.fetchone()[0] > 0
 
+    # Получаем дополнительную информацию из расписания
+    updated_attendance_data = []
+    for record in attendance_data:
+        lesson_number = record[3]
+        attendance_time = record[2]
+        current_day_of_week_english = attendance_time.strftime('%A')  # Получаем день недели по дате посещения на английском
+        current_day_of_week = get_day_of_week_in_russian(current_day_of_week_english)  # Переводим на русский
+
+        # Отладочный вывод в консоль
+        print(f"Query: SELECT day_of_week, subject, teacher FROM schedule WHERE lesson_number = {lesson_number} AND day_of_week = '{current_day_of_week}'")
+
+        cursor.execute("""
+            SELECT day_of_week, subject, teacher
+            FROM schedule
+            WHERE lesson_number = %s AND day_of_week = %s
+        """, (lesson_number, current_day_of_week))
+        schedule_info = cursor.fetchone()
+
+        # Отладочный вывод в консоль
+        print(f"Schedule Info: {schedule_info}")
+
+        if schedule_info:
+            updated_record = list(record) + list(schedule_info)
+            updated_attendance_data.append(updated_record)
+        else:
+            updated_attendance_data.append(list(record) + [None, None, None])
+
     cursor.close()
     conn.close()
 
+    # Отладочный вывод в консоль
+    for row in updated_attendance_data:
+        print(row)
+
     teacher_name = f"{current_user.last_name} {current_user.first_name} {current_user.middle_name}"
-    return render_template('teacher_dashboard.html', attendance_data=attendance_data, teacher_name=teacher_name, has_classes=has_classes)
+    return render_template('teacher_dashboard.html', attendance_data=updated_attendance_data, teacher_name=teacher_name, has_classes=has_classes)
 
 
 @app.route('/teacher/add_student', methods=['GET', 'POST'])
@@ -878,21 +941,44 @@ def stop_capture():
 def get_attendance_data():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name), classes.name, attendance.attendance_time FROM attendance JOIN students ON attendance.student_id = students.id JOIN classes ON students.class_id = classes.id")
+    cursor.execute("""
+        SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
+               classes.name, attendance.attendance_time, schedule.day_of_week,
+               schedule.subject, schedule.teacher
+        FROM attendance
+        JOIN students ON attendance.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        JOIN schedule ON attendance.lesson_number = schedule.lesson_number
+                       AND DAYOFWEEK(attendance.attendance_time) =
+                           CASE schedule.day_of_week
+                               WHEN 'Понедельник' THEN 2
+                               WHEN 'Вторник' THEN 3
+                               WHEN 'Среда' THEN 4
+                               WHEN 'Четверг' THEN 5
+                               WHEN 'Пятница' THEN 6
+                               WHEN 'Суббота' THEN 7
+                               WHEN 'Воскресенье' THEN 1
+                           END
+        WHERE attendance.responsible_teacher_id = %s
+    """, (current_user.teacher_id,))
     attendance_data = cursor.fetchall()
     cursor.close()
     conn.close()
 
     # Преобразование данных в список словарей для удобства
     attendance_list = []
-    for name, class_name, attendance_time in attendance_data:
+    for name, class_name, attendance_time, day_of_week, subject, teacher in attendance_data:
         attendance_list.append({
             'name': name,
             'class': class_name,
-            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S')  # Преобразование datetime в строку
+            'attendance_time': attendance_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'day_of_week': day_of_week,
+            'subject': subject,
+            'teacher': teacher
         })
 
     return jsonify(attendance_list)
+
 
 @app.route('/get_attendance_statistics')
 @login_required
@@ -1587,6 +1673,153 @@ def get_teacher_schedule_filters():
             "teachers": teachers,
         }
     })
+
+@app.route('/attendance_grid')
+@login_required
+@role_required('teacher')
+def attendance_grid():
+    from datetime import datetime
+
+    # Получаем текущую дату и день недели
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    current_day_of_week = datetime.now().strftime('%A')
+
+    # Преобразуем текущий день недели на русский язык
+    days_mapping = {
+        'Monday': 'Понедельник',
+        'Tuesday': 'Вторник',
+        'Wednesday': 'Среда',
+        'Thursday': 'Четверг',
+        'Friday': 'Пятница',
+        'Saturday': 'Суббота',
+        'Sunday': 'Воскресенье'
+    }
+    current_day_of_week_ru = days_mapping.get(current_day_of_week, current_day_of_week)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Получаем учеников, за которых отвечал учитель в текущий день
+    cursor.execute("""
+        SELECT DISTINCT students.id, CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) AS student_name, classes.name AS class_name
+        FROM attendance
+        JOIN students ON attendance.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        WHERE DATE(attendance.attendance_time) = %s AND attendance.responsible_teacher_id = %s
+    """, (current_date, current_user.teacher_id))
+    students = cursor.fetchall()
+
+    # Отладочная информация: выводим данные об учениках
+    print("Students data fetched from the database:")
+    for student in students:
+        print(student)
+
+    # Получаем предметы, которые ведет учитель в текущий день для каждого класса
+    subjects_by_class = {}
+    for student in students:
+        class_name = student[2]
+        cursor.execute("""
+            SELECT DISTINCT lesson_number, subject
+            FROM schedule
+            WHERE day_of_week = %s AND class_name = %s
+        """, (current_day_of_week_ru, class_name))
+        subjects = cursor.fetchall()
+        subjects_by_class[class_name] = {subject[0]: subject[1] for subject in subjects}
+
+    # Отладочная информация: выводим данные о предметах
+    print("Subjects data fetched from the database:")
+    for class_name, subjects in subjects_by_class.items():
+        print(f"Class Name {class_name}: {subjects}")
+
+    # Получаем данные о посещаемости
+    attendance_data = {}
+    for student in students:
+        student_id = student[0]
+        class_name = student[2]
+        attendance_data[student_id] = {lesson_number: False for lesson_number in subjects_by_class[class_name].keys()}
+
+    cursor.execute("""
+        SELECT student_id, lesson_number
+        FROM attendance
+        WHERE DATE(attendance.attendance_time) = %s AND attendance.responsible_teacher_id = %s
+    """, (current_date, current_user.teacher_id))
+    attendance_records = cursor.fetchall()
+
+    # Отладочная информация: выводим данные о посещаемости
+    print("Attendance records fetched from the database:")
+    for record in attendance_records:
+        print(record)
+
+    for record in attendance_records:
+        student_id, lesson_number = record
+        if student_id in attendance_data and lesson_number in attendance_data[student_id]:
+            attendance_data[student_id][lesson_number] = True
+        else:
+            print(f"Warning: Student ID {student_id} or lesson number {lesson_number} not found in attendance_data.")
+
+    cursor.close()
+    conn.close()
+
+    # Отладочная информация
+    print("Данные учеников перед рендерингом:", students)
+    print("Данные предметов по классам перед рендерингом:", subjects_by_class)
+
+    # Проверка, существует ли класс первого ученика в subjects_by_class
+    if students:
+        first_student_class = students[0][2]
+        print(f"Класс первого ученика: {first_student_class}")
+        if first_student_class in subjects_by_class:
+            print(f"Предметы для {first_student_class}: {subjects_by_class[first_student_class]}")
+        else:
+            print(f"Предупреждение: {first_student_class} не найден в subjects_by_class")
+    else:
+        print("Предупреждение: Нет данных об учениках")
+
+    return render_template('attendance_grid.html', students=students, subjects_by_class=subjects_by_class, attendance_data=attendance_data, current_date=current_date)
+
+@app.route('/get_attendance_stats/<int:student_id>')
+@login_required
+@role_required('teacher')
+def get_attendance_stats(student_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DATE(attendance_time) AS date, COUNT(*) AS count
+        FROM attendance
+        WHERE student_id = %s
+        GROUP BY DATE(attendance_time)
+        ORDER BY date DESC
+        LIMIT 7
+    """, (student_id,))
+    stats = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    labels = [row[0].strftime('%Y-%m-%d') for row in stats]
+    data = [row[1] for row in stats]
+
+    return jsonify({'labels': labels, 'data': data})
+
+from datetime import datetime
+
+@app.route('/check_today_attendance', methods=['GET'])
+@login_required
+@role_required('teacher')
+def check_today_attendance():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM attendance
+        WHERE DATE(attendance_time) = %s AND responsible_teacher_id = %s
+    """, (current_date, current_user.teacher_id))
+    count = cursor.fetchone()[0]
+    cursor.close()
+    conn.close()
+
+    has_attendance = count > 0
+    return jsonify({"has_attendance": has_attendance})
 
 
 if __name__ == '__main__':

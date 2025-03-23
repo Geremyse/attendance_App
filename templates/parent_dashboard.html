@@ -2,5 +2,53 @@
 
 {% block content %}
     <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Панель родителя</h1>
+
+    <form id="child-select-form" method="GET" action="{{ url_for('parent_dashboard') }}" class="mb-4">
+        <label for="child_select" class="block text-gray-700 text-sm font-bold mb-2">Выберите ребенка:</label>
+        <select id="child_select" name="child_id" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            <option value="" disabled selected>Выберите ребенка</option>
+            {% for child in children %}
+                <option value="{{ child[0] }}">{{ child[1] }}</option>
+                <script>
+                    console.log("Child ID: {{ child[0] }}");
+                    console.log("Child Full Name: {{ child[1] }}");
+                </script>
+            {% endfor %}
+        </select>
+        <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-2">Показать посещаемость</button>
+    </form>
+
+    {% if no_schedule_message %}
+        <p class="text-gray-700">{{ no_schedule_message }}</p>
+    {% elif selected_child_id %}
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">
+            Посещаемость ученика
+            {% for child in children %}
+                {% if child[0] == selected_child_id %}
+                    {{ child[1] }}
+                {% endif %}
+            {% endfor %}
+            на {{ current_date }}
+        </h2>
+        <table class="min-w-full bg-white shadow-md rounded-lg overflow-hidden">
+            <thead class="bg-gray-50">
+                <tr>
+                    {% for lesson_number, subject in subjects_by_class[selected_child_id].items() %}
+                        <th class="py-2 px-4 border-b">{{ subject }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    {% for lesson_number, attended in attendance_data[selected_child_id].items() %}
+                        <td class="py-2 px-4 border-b">{{ '✓' if attended else '✗' }}</td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+    {% else %}
+        <p class="text-gray-700">Выберите ребенка, чтобы увидеть посещаемость.</p>
+    {% endif %}
+
     <a href="{{ url_for('logout') }}" class="block text-center text-blue-500 hover:underline mt-4">Выйти из системы</a>
 {% endblock %}

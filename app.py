@@ -12,7 +12,7 @@ import base64
 import threading
 from functools import wraps
 from flask import abort
-from forms import LoginForm, RegisterForm, AddStudentForm, TeacherRegistrationForm, StudentRegistrationForm, TeacherEditForm
+from forms import LoginForm, RegisterForm, AddStudentForm, TeacherRegistrationForm, StudentRegistrationForm, TeacherEditForm, ParentRegistrationForm
 import os
 import json
 import random
@@ -689,13 +689,6 @@ def get_classes():
     conn.close()
     return classes
 
-
-@app.route('/parent')
-@login_required
-@role_required('parent')
-def parent_dashboard():
-    # Логика для панели родителя
-    return render_template('parent_dashboard.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1820,6 +1813,202 @@ def check_today_attendance():
 
     has_attendance = count > 0
     return jsonify({"has_attendance": has_attendance})
+
+
+
+@app.route('/register_parent', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
+def register_parent():
+    form = ParentRegistrationForm()
+    form.class_id.choices = [(row[0], row[1]) for row in get_classes()]
+    last_name = form.last_name.data
+    first_name = form.first_name.data
+    middle_name = form.middle_name.data
+    def get_students_by_class(class_id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, last_name, first_name, middle_name FROM students WHERE class_id = %s", (class_id,))
+        students = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return students
+
+    if request.method == 'POST':
+        class_id = request.form.get('class_id')
+        print(f"Selected class_id: {class_id}")  # Отладочная печать
+
+        if class_id is not None:
+            # Получаем учеников для выбранного класса
+            students = get_students_by_class(class_id)
+            form.student_id.choices = [(row[0], f"{row[1]} {row[2]} {row[3]}") for row in students]
+        else:
+            flash('Пожалуйста, выберите класс', 'danger')
+            return redirect(url_for('register_parent'))
+
+        if form.validate_on_submit():
+            hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Проверка на уникальность имени пользователя
+            cursor.execute("SELECT * FROM users WHERE username = %s", (form.username.data,))
+            existing_user = cursor.fetchone()
+            if existing_user:
+                flash('Имя пользователя уже существует', 'danger')
+                return redirect(url_for('register_parent'))
+
+            # Вставка нового родителя в таблицу parents
+            cursor.execute("INSERT INTO parents (last_name, first_name, middle_name) VALUES (%s, %s, %s)",
+                       (last_name, first_name, middle_name))
+            parent_id = cursor.lastrowid
+            # Вставка нового родителя в таблицу users
+            cursor.execute("INSERT INTO users (username, password, role, parent_id) VALUES (%s, %s, %s, %s)",
+                           (form.username.data, hashed_password, 'parent', parent_id))
+           
+
+            # Убедимся, что form.student_id.data - это список
+            student_ids = form.student_id.data
+            if not isinstance(student_ids, list):
+                student_ids = [student_ids]
+
+            # Вставка связей в таблицу parent_student_relations для каждого выбранного ученика
+            for student_id in student_ids:
+                cursor.execute("INSERT INTO parent_student_relations (parent_id, student_id) VALUES (%s, %s)",
+                               (parent_id, student_id))
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            flash('Родитель успешно зарегистрирован', 'success')
+            return redirect(url_for('admin_dashboard'))
+
+    return render_template('register_parent.html', form=form)
+
+
+
+@app.route('/get_students_by_class', methods=['POST'])
+@login_required
+@role_required('admin')
+def get_students_by_class():
+    # Получаем class_id из запроса
+    class_id = request.form.get('class_id')
+    print(f"Received class_id: {class_id}")  # Отладочная информация
+
+    if class_id is None:
+        print("Error: class_id is None")  # Отладочная информация
+        return jsonify({"error": "Invalid class_id"}), 400
+
+    try:
+        # Устанавливаем соединение с базой данных
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        print("Database connection established")  # Отладочная информация
+
+        # Выполняем SQL-запрос для получения учеников по class_id
+        cursor.execute("SELECT id, last_name, first_name, middle_name FROM students WHERE class_id = %s", (class_id,))
+        students = cursor.fetchall()
+        print(f"Students fetched from database: {students}")  # Отладочная информация
+
+        # Формируем список учеников для отправки в JSON формате
+        students_list = [{'id': student[0], 'last_name': student[1], 'first_name': student[2], 'middle_name': student[3]} for student in students]
+        print(f"Prepared students list for JSON response: {students_list}")  # Отладочная информация
+
+        return jsonify(students_list)
+
+    except Exception as e:
+        print(f"Error fetching students: {e}")  # Отладочная информация
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conn.close()
+        print("Database connection closed")  # Отладочная информация
+
+
+@app.route('/parent_dashboard', methods=['GET', 'POST'])
+@login_required
+@role_required('parent')
+def parent_dashboard():
+    parent_id = current_user.parent_id
+
+    # Получаем детей родителя
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT students.id, CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) AS full_name, classes.name AS class_name
+        FROM parent_student_relations
+        JOIN students ON parent_student_relations.student_id = students.id
+        JOIN classes ON students.class_id = classes.id
+        WHERE parent_student_relations.parent_id = %s
+    """, (parent_id,))
+    children = cursor.fetchall()
+
+    # Отладочный вывод
+    print("Children data fetched from database:", children)
+
+    # Получаем посещаемость для выбранного ребенка
+    selected_child_id = request.args.get('child_id')
+    attendance_data = {}
+    subjects_by_class = {}
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    current_day_of_week = datetime.now().strftime('%A')
+
+    # Преобразуем текущий день недели на русский язык
+    days_mapping = {
+        'Monday': 'Понедельник',
+        'Tuesday': 'Вторник',
+        'Wednesday': 'Среда',
+        'Thursday': 'Четверг',
+        'Friday': 'Пятница',
+        'Saturday': 'Суббота',
+        'Sunday': 'Воскресенье'
+    }
+    current_day_of_week_ru = days_mapping.get(current_day_of_week, current_day_of_week)
+
+    # Проверка, является ли сегодня выходным днем
+    if current_day_of_week_ru in ['Суббота', 'Воскресенье']:
+        no_schedule_message = f"Сегодня {current_day_of_week_ru}, занятий нет."
+        return render_template('parent_dashboard.html', children=children, no_schedule_message=no_schedule_message, selected_child_id=selected_child_id, current_date=current_date)
+
+    if selected_child_id:
+        # Получаем данные о предметах из расписания для класса ученика на сегодня
+        cursor.execute("""
+            SELECT DISTINCT lesson_number, subject
+            FROM schedule
+            WHERE class_name = (SELECT class_name FROM students WHERE id = %s)
+            AND day_of_week = %s
+        """, (selected_child_id, current_day_of_week_ru))
+        subjects = cursor.fetchall()
+        subjects_by_class[selected_child_id] = {subject[0]: subject[1] for subject in subjects}
+
+        # Отладочный вывод
+        print("Subjects data fetched from database:", subjects_by_class)
+
+        # Инициализируем данные о посещаемости
+        attendance_data[selected_child_id] = {lesson_number: False for lesson_number in subjects_by_class[selected_child_id].keys()}
+
+        # Получаем данные о посещаемости
+        cursor.execute("""
+            SELECT lesson_number
+            FROM attendance
+            WHERE student_id = %s AND DATE(attendance_time) = %s
+        """, (selected_child_id, current_date))
+        attendance_records = cursor.fetchall()
+
+        for record in attendance_records:
+            lesson_number = record[0]
+            if lesson_number in attendance_data[selected_child_id]:
+                attendance_data[selected_child_id][lesson_number] = True
+
+        # Отладочный вывод
+        print("Attendance data:", attendance_data)
+
+    cursor.close()
+    conn.close()
+
+    return render_template('parent_dashboard.html', children=children, attendance_data=attendance_data, subjects_by_class=subjects_by_class, selected_child_id=selected_child_id, current_date=current_date)
 
 
 if __name__ == '__main__':

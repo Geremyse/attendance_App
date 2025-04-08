@@ -11,24 +11,28 @@
 <body class="bg-gray-100 text-gray-800 font-sans">
     <div class="container mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
         <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Отчёты</h1>
-        <table id="attendanceTable" class="min-w-full bg-white mt-6">
+        <h2 class="text-2xl font-semibold mb-4">Статистика посещаемости по классам</h2>
+        <table class="min-w-full bg-white mt-6">
             <thead>
                 <tr>
-                    <th class="py-2 px-4 border-b text-center">ФИО</th>
                     <th class="py-2 px-4 border-b text-center">Класс</th>
-                    <th class="py-2 px-4 border-b text-center">Время посещения</th>
+                    <th class="py-2 px-4 border-b text-center">Количество посещений</th>
                 </tr>
             </thead>
             <tbody>
-                {% for row in attendance_data %}
+                {% for class_name, attendance_count in attendance_stats %}
                 <tr>
-                    <td class="py-2 px-4 border-b text-center">{{ row[0] }}</td>
-                    <td class="py-2 px-4 border-b text-center">{{ row[1] }}</td>
-                    <td class="py-2 px-4 border-b text-center">{{ row[2] }}</td>
+                    <td class="py-2 px-4 border-b text-center">{{ class_name }}</td>
+                    <td class="py-2 px-4 border-b text-center">{{ attendance_count }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        <div class="mt-6 text-center">
+            <a href="{{ url_for('download_report') }}" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">
+                Сохранить отчёт в Загрузки
+            </a>
+        </div>
     </div>
 </body>
 </html>

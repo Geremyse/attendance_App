@@ -22,6 +22,7 @@ import pandas as pd
 from collections import defaultdict
 import re
 from flask_bcrypt import Bcrypt
+from flask import send_file
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
@@ -394,21 +395,6 @@ def index():
 @role_required('admin')
 def admin_dashboard():
     return render_template('admin_dashboard.html')
-
-@app.route('/admin/reports')
-@login_required
-@role_required('admin')
-def admin_reports():
-    # Логика для получения данных для страницы отчетов
-    # Например, получение данных из базы данных
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM reports")
-    reports = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return render_template('admin_reports.html', reports=reports)
 
 
 @app.route('/admin/teachers', methods=['GET', 'POST'])
@@ -1115,49 +1101,143 @@ def update_settings():
 
 @app.route('/reports')
 @login_required
-@role_required('teacher')
+@role_required(['admin', 'teacher'])
 def reports():
     conn = get_db_connection()
     cursor = conn.cursor()
-    teacher_id = current_user.teacher_id
+    user_role = current_user.role
 
-    # Получаем данные о посещаемости для учеников, за съемку которых отвечал текущий учитель
-    cursor.execute("""
-        SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
-               classes.name, attendance.attendance_time
-        FROM attendance
-        JOIN students ON attendance.student_id = students.id
-        JOIN classes ON students.class_id = classes.id
-        WHERE attendance.responsible_teacher_id = %s
-    """, (teacher_id,))
-    attendance_data = cursor.fetchall()
+    if user_role == 'admin':
+        # Получаем статистику посещаемости по всем классам для администратора
+        cursor.execute("""
+            SELECT classes.name, COUNT(attendance.id) as attendance_count
+            FROM attendance
+            JOIN students ON attendance.student_id = students.id
+            JOIN classes ON students.class_id = classes.id
+            GROUP BY classes.name
+        """)
+    elif user_role == 'teacher':
+        # Получаем статистику посещаемости для классов, за которые отвечает учитель
+        cursor.execute("""
+            SELECT classes.name, COUNT(attendance.id) as attendance_count
+            FROM attendance
+            JOIN students ON attendance.student_id = students.id
+            JOIN classes ON students.class_id = classes.id
+            JOIN teacher_classes ON classes.id = teacher_classes.class_id
+            WHERE teacher_classes.teacher_id = %s
+            GROUP BY classes.name
+        """, (current_user.teacher_id,))
 
-    # Проверяем, есть ли у учителя классное руководство
-    cursor.execute("""
-        SELECT classes.id, classes.name
-        FROM teacher_classes
-        JOIN classes ON teacher_classes.class_id = classes.id
-        WHERE teacher_classes.teacher_id = %s AND teacher_classes.has_classes = 1
-    """, (teacher_id,))
-    classes = cursor.fetchall()
-
-    if classes:
-        class_ids = [class_id[0] for class_id in classes]
-        for class_id in class_ids:
-            cursor.execute("""
-                SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name),
-                       classes.name, attendance.attendance_time
-                FROM attendance
-                JOIN students ON attendance.student_id = students.id
-                JOIN classes ON students.class_id = classes.id
-                WHERE students.class_id = %s
-            """, (class_id,))
-            attendance_data.extend(cursor.fetchall())
-
+    attendance_stats = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    return render_template('teacher_reports.html', attendance_data=attendance_data)
+    return render_template('reports.html', attendance_stats=attendance_stats)
+
+
+import os
+import pandas as pd
+from flask import send_file
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as ExcelImage
+
+@app.route('/download_report')
+@login_required
+@role_required(['admin', 'teacher'])
+def download_report():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    user_role = current_user.role
+
+    if user_role == 'admin':
+        # Получаем данные о посещаемости для всех классов для администратора
+        cursor.execute("""
+            SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) AS full_name,
+                   students.face_encoding AS photo,
+                   DATE(attendance.attendance_time) AS attendance_date,
+                   classes.name AS class_name,
+                   GROUP_CONCAT(DISTINCT schedule.subject ORDER BY schedule.subject SEPARATOR ', ') AS subjects
+            FROM attendance
+            JOIN students ON attendance.student_id = students.id
+            JOIN classes ON students.class_id = classes.id
+            JOIN schedule ON attendance.lesson_number = schedule.lesson_number
+                           AND DAYOFWEEK(attendance.attendance_time) =
+                               CASE schedule.day_of_week
+                                   WHEN 'Понедельник' THEN 2
+                                   WHEN 'Вторник' THEN 3
+                                   WHEN 'Среда' THEN 4
+                                   WHEN 'Четверг' THEN 5
+                                   WHEN 'Пятница' THEN 6
+                                   WHEN 'Суббота' THEN 7
+                                   WHEN 'Воскресенье' THEN 1
+                               END
+            GROUP BY students.id, DATE(attendance.attendance_time)
+        """)
+    elif user_role == 'teacher':
+        # Получаем данные о посещаемости для классов, за которые отвечает учитель
+        cursor.execute("""
+            SELECT CONCAT(students.last_name, ' ', students.first_name, ' ', students.middle_name) AS full_name,
+                   students.face_encoding AS photo,
+                   DATE(attendance.attendance_time) AS attendance_date,
+                   classes.name AS class_name,
+                   GROUP_CONCAT(DISTINCT schedule.subject ORDER BY schedule.subject SEPARATOR ', ') AS subjects
+            FROM attendance
+            JOIN students ON attendance.student_id = students.id
+            JOIN classes ON students.class_id = classes.id
+            JOIN schedule ON attendance.lesson_number = schedule.lesson_number
+                           AND DAYOFWEEK(attendance.attendance_time) =
+                               CASE schedule.day_of_week
+                                   WHEN 'Понедельник' THEN 2
+                                   WHEN 'Вторник' THEN 3
+                                   WHEN 'Среда' THEN 4
+                                   WHEN 'Четверг' THEN 5
+                                   WHEN 'Пятница' THEN 6
+                                   WHEN 'Суббота' THEN 7
+                                   WHEN 'Воскресенье' THEN 1
+                               END
+            JOIN teacher_classes ON classes.id = teacher_classes.class_id
+            WHERE teacher_classes.teacher_id = %s
+            GROUP BY students.id, DATE(attendance.attendance_time)
+        """, (current_user.teacher_id,))
+
+    attendance_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    # Создаем директорию для отчетов, если она не существует
+    reports_dir = 'reports'
+    os.makedirs(reports_dir, exist_ok=True)
+
+    # Создаем новый Excel-файл
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Attendance Report"
+
+    # Заголовки для Excel
+    headers = ['ФИО', 'Фото', 'Дата посещения', 'Класс', 'Предметы']
+    ws.append(headers)
+
+    # Добавляем данные в Excel
+    for row in attendance_data:
+        ws.append(list(row))
+
+    # Вставка изображений
+    for row in range(2, ws.max_row + 1):
+        photo_filename = ws.cell(row=row, column=2).value
+        if photo_filename:
+            photo_path = os.path.join('static/students_photo', f"{photo_filename}.jpg")
+            if os.path.exists(photo_path):
+                img = ExcelImage(photo_path)
+                # Устанавливаем размер изображения
+                img.width, img.height = 80, 100
+                # Вставляем изображение в ячейку B
+                ws.add_image(img, f'B{row}')
+
+    # Сохраняем Excel-файл
+    report_path = os.path.join(reports_dir, 'attendance_report.xlsx')
+    wb.save(report_path)
+
+    return send_file(report_path, as_attachment=True)
 
 
 @app.route('/my_class')
@@ -1946,7 +2026,7 @@ def parent_dashboard():
     children = cursor.fetchall()
 
     # Отладочный вывод
-    print("Children data fetched from database:", children)
+    print("Данные о детях, полученные из базы данных:", children)
 
     # Получаем посещаемость для выбранного ребенка
     selected_child_id = request.args.get('child_id')
@@ -1967,6 +2047,11 @@ def parent_dashboard():
     }
     current_day_of_week_ru = days_mapping.get(current_day_of_week, current_day_of_week)
 
+    # Отладочный вывод
+    print(f"Текущая дата: {current_date}")
+    print(f"Текущий день недели (на английском): {current_day_of_week}")
+    print(f"Текущий день недели (на русском): {current_day_of_week_ru}")
+
     # Проверка, является ли сегодня выходным днем
     if current_day_of_week_ru in ['Суббота', 'Воскресенье']:
         no_schedule_message = f"Сегодня {current_day_of_week_ru}, занятий нет."
@@ -1977,14 +2062,19 @@ def parent_dashboard():
         cursor.execute("""
             SELECT DISTINCT lesson_number, subject
             FROM schedule
-            WHERE class_name = (SELECT class_name FROM students WHERE id = %s)
+            WHERE class_name = %s
             AND day_of_week = %s
-        """, (selected_child_id, current_day_of_week_ru))
+        """, (children[int(selected_child_id)-1][2], current_day_of_week_ru))
         subjects = cursor.fetchall()
+
+        # Отладочный вывод
+        print(f"Данные о предметах для класса {children[int(selected_child_id)-1][2]} на {current_day_of_week_ru}: {subjects}")
+
+        # Создаем словарь предметов по номеру урока
         subjects_by_class[selected_child_id] = {subject[0]: subject[1] for subject in subjects}
 
         # Отладочный вывод
-        print("Subjects data fetched from database:", subjects_by_class)
+        print("Словарь предметов по номеру урока:", subjects_by_class)
 
         # Инициализируем данные о посещаемости
         attendance_data[selected_child_id] = {lesson_number: False for lesson_number in subjects_by_class[selected_child_id].keys()}
@@ -1997,18 +2087,44 @@ def parent_dashboard():
         """, (selected_child_id, current_date))
         attendance_records = cursor.fetchall()
 
+        # Отладочный вывод
+        print("Записи о посещаемости для ученика:", attendance_records)
+
         for record in attendance_records:
             lesson_number = record[0]
             if lesson_number in attendance_data[selected_child_id]:
                 attendance_data[selected_child_id][lesson_number] = True
 
         # Отладочный вывод
-        print("Attendance data:", attendance_data)
+        print("Данные о посещаемости:", attendance_data)
 
     cursor.close()
     conn.close()
 
     return render_template('parent_dashboard.html', children=children, attendance_data=attendance_data, subjects_by_class=subjects_by_class, selected_child_id=selected_child_id, current_date=current_date)
+
+@app.route('/get_attendance_stats_for_student/<int:student_id>')
+@login_required
+@role_required('parent')
+def get_attendance_stats_for_student(student_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DATE(attendance_time) AS date, COUNT(*) AS count
+        FROM attendance
+        WHERE student_id = %s
+        GROUP BY DATE(attendance_time)
+        ORDER BY date DESC
+        LIMIT 7
+    """, (student_id,))
+    stats = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    labels = [row[0].strftime('%Y-%m-%d') for row in stats]
+    data = [row[1] for row in stats]
+
+    return jsonify({'labels': labels, 'data': data})
 
 
 if __name__ == '__main__':

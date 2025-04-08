@@ -1,18 +1,68 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель родителя</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .teacher-circle img,
+        .student-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
 
-{% block content %}
-    <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">Панель родителя</h1>
+        .teacher-circle:hover,
+        .student-circle:hover {
+            transform: scale(1.1);
+        }
+
+        .student-name:hover {
+            transform: scale(1.1);
+        }
+
+        /* Анимация загрузки */
+        .loading {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Анимация появления */
+        .modal-enter {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }
+
+        .modal-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="class-header bg-blue-500 text-black p-4 rounded-lg shadow-md text-center mb-8">
+        <h1 class="text-4xl font-bold">Панель родителя</h1>
+    </div>
 
     <form id="child-select-form" method="GET" action="{{ url_for('parent_dashboard') }}" class="mb-4">
         <label for="child_select" class="block text-gray-700 text-sm font-bold mb-2">Выберите ребенка:</label>
         <select id="child_select" name="child_id" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-            <option value="" disabled selected>Выберите ребенка</option>
+            <option value="" disabled>Выберите ребенка</option>
             {% for child in children %}
-                <option value="{{ child[0] }}">{{ child[1] }}</option>
-                <script>
-                    console.log("Child ID: {{ child[0] }}");
-                    console.log("Child Full Name: {{ child[1] }}");
-                </script>
+                <option value="{{ child[0] }}" {% if child[0] == selected_child_id|int %}selected{% endif %}>
+                    {{ child[1] }}
+                </option>
             {% endfor %}
         </select>
         <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-2">Показать посещаемость</button>
@@ -24,31 +74,160 @@
         <h2 class="text-2xl font-bold text-gray-800 mb-4">
             Посещаемость ученика
             {% for child in children %}
-                {% if child[0] == selected_child_id %}
-                    {{ child[1] }}
+                {% if child[0] == selected_child_id|int %}
+                    <span class="font-bold text-blue-500">{{ child[1] }}</span>
                 {% endif %}
             {% endfor %}
             на {{ current_date }}
         </h2>
-        <table class="min-w-full bg-white shadow-md rounded-lg overflow-hidden">
-            <thead class="bg-gray-50">
-                <tr>
-                    {% for lesson_number, subject in subjects_by_class[selected_child_id].items() %}
-                        <th class="py-2 px-4 border-b">{{ subject }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    {% for lesson_number, attended in attendance_data[selected_child_id].items() %}
-                        <td class="py-2 px-4 border-b">{{ '✓' if attended else '✗' }}</td>
-                    {% endfor %}
-                </tr>
-            </tbody>
-        </table>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full bg-white shadow-md rounded-lg overflow-hidden">
+                <thead class="bg-blue-500 text-white">
+                    <tr>
+                        {% for lesson_number, subject in subjects_by_class[selected_child_id].items() %}
+                            <th class="py-3 px-4 border-b border-gray-200 text-left text-sm font-semibold">{{ subject }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="hover:bg-gray-100">
+                        {% for lesson_number, attended in attendance_data[selected_child_id].items() %}
+                            <td class="py-3 px-4 border-b border-gray-200 text-center text-lg {{ 'text-green-500' if attended else 'text-red-500' }}">
+                                {{ '✓' if attended else '✗' }}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <button id="stats-button" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-2">
+            Показать статистику посещаемости
+        </button>
+
+        <div id="stats-modal" class="fixed z-10 inset-0 overflow-y-auto hidden modal-enter">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+                    <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+                </div>
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                    <div>
+                        <div class="mt-3 text-center sm:mt-5">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-headline">
+                                Статистика посещаемости
+                            </h3>
+                            <div class="mt-2">
+                                <div class="loading mx-auto mb-4"></div>
+                                <canvas id="attendance-chart" class="hidden"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-5 sm:mt-6">
+                        <button type="button" class="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base leading-6 font-medium text-white hover:bg-green-500 focus:outline-none focus:border-green-700 focus:shadow-outline-green transition ease-in-out duration-150 sm:text-sm sm:leading-5" onclick="closeModal()">
+                            Закрыть
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     {% else %}
         <p class="text-gray-700">Выберите ребенка, чтобы увидеть посещаемость.</p>
     {% endif %}
 
     <a href="{{ url_for('logout') }}" class="block text-center text-blue-500 hover:underline mt-4">Выйти из системы</a>
-{% endblock %}
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const statsButton = document.getElementById('stats-button');
+            const childSelect = document.getElementById('child_select');
+            const modal = document.getElementById('stats-modal');
+            const loadingSpinner = modal.querySelector('.loading');
+            const chartCanvas = document.getElementById('attendance-chart');
+
+            // Восстановление выбранного значения из localStorage
+            const savedChildId = localStorage.getItem('selectedChildId');
+            if (savedChildId) {
+                childSelect.value = savedChildId;
+            }
+
+            // Обработчик события изменения выбора в выпадающем списке
+            childSelect.addEventListener('change', function() {
+                const selectedChildId = childSelect.value;
+                if (selectedChildId) {
+                    localStorage.setItem('selectedChildId', selectedChildId);
+                }
+            });
+
+            if (statsButton) {
+                statsButton.addEventListener('click', function() {
+                    const selectedChildId = childSelect.value;
+                    const selectedChildName = childSelect.options[childSelect.selectedIndex].text;
+                    if (selectedChildId) {
+                        // Показать модальное окно с анимацией
+                        modal.classList.remove('hidden');
+                        modal.classList.add('modal-enter-active');
+
+                        // Показать загрузочный спиннер
+                        loadingSpinner.classList.remove('hidden');
+                        chartCanvas.classList.add('hidden');
+
+                        // Обновить заголовок модального окна
+                        document.getElementById('modal-headline').textContent = `Статистика посещений для "${selectedChildName}"`;
+
+                        fetch(`/get_attendance_stats_for_student/${selectedChildId}`)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok');
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                // Скрыть загрузочный спиннер и показать график
+                                loadingSpinner.classList.add('hidden');
+                                chartCanvas.classList.remove('hidden');
+
+                                const ctx = chartCanvas.getContext('2d');
+                                new Chart(ctx, {
+                                    type: 'line',
+                                    data: {
+                                        labels: data.labels,
+                                        datasets: [{
+                                            label: 'Посещаемость',
+                                            data: data.data,
+                                            borderColor: 'rgba(75, 192, 192, 1)',
+                                            borderWidth: 1,
+                                            fill: false
+                                        }]
+                                    },
+                                    options: {
+                                        scales: {
+                                            y: {
+                                                beginAtZero: true
+                                            }
+                                        }
+                                    }
+                                });
+                            })
+                            .catch(error => {
+                                console.error('Error fetching attendance stats:', error);
+                                loadingSpinner.classList.add('hidden');
+                            });
+                    } else {
+                        console.log("No child selected");
+                    }
+                });
+            }
+        });
+
+        function closeModal() {
+            const modal = document.getElementById('stats-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('modal-enter-active');
+        }
+    </script>
+</body>
+</html>

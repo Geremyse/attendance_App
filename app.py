@@ -170,7 +170,7 @@ def get_day_of_week_in_russian(day_of_week_english):
 def record_attendance(student_name, teacher_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM students WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s", (student_name,))
+    cursor.execute("SELECT id, face_encoding FROM students WHERE CONCAT(last_name, ' ', first_name, ' ', middle_name) = %s", (student_name,))
     student = cursor.fetchone()
     if student is None:
         print(f"Student with name {student_name} not found in the database.")
@@ -178,23 +178,23 @@ def record_attendance(student_name, teacher_id):
         conn.close()
         return
 
-    student_id = student[0]
+    student_id, face_encoding = student
     current_time = datetime.now()
     current_date = current_time.strftime('%Y-%m-%d')
     current_time_str = current_time.strftime('%H:%M:%S')
-    current_day_of_week_english = current_time.strftime('%A')  # Получаем текущий день недели на английском
-    current_day_of_week = get_day_of_week_in_russian(current_day_of_week_english)  # Переводим на русский
+    current_day_of_week_english = current_time.strftime('%A')
+    current_day_of_week = get_day_of_week_in_russian(current_day_of_week_english)
 
-    # Определение номера урока на основе времени и дня недели
-    cursor.execute("SELECT lesson_number, time FROM schedule WHERE day_of_week = %s", (current_day_of_week,))
+    cursor.execute("SELECT lesson_number, time, subject FROM schedule WHERE day_of_week = %s", (current_day_of_week,))
     schedule_rows = cursor.fetchall()
     lesson_number = None
+    subject_name = None
 
     for row in schedule_rows:
-        time_range = row[1].strip()  # Удаляем лишние пробелы
+        time_range = row[1].strip()
         start_time_str, end_time_str = time_range.split('-')
-        start_time_str = start_time_str.strip()  # Удаляем лишние пробелы
-        end_time_str = end_time_str.strip()  # Удаляем лишние пробелы
+        start_time_str = start_time_str.strip()
+        end_time_str = end_time_str.strip()
 
         try:
             start_time = datetime.strptime(start_time_str, '%H:%M').time()
@@ -203,6 +203,7 @@ def record_attendance(student_name, teacher_id):
 
             if start_time <= current_time_obj <= end_time:
                 lesson_number = row[0]
+                subject_name = row[2]
                 break
         except ValueError as e:
             print(f"Error parsing time range {time_range}: {e}")
@@ -213,7 +214,6 @@ def record_attendance(student_name, teacher_id):
         conn.close()
         return
 
-    # Проверка, была ли уже записана посещаемость для данного ученика в текущий день и урок
     cursor.execute("SELECT * FROM attendance WHERE student_id = %s AND DATE(attendance_time) = %s AND lesson_number = %s", (student_id, current_date, lesson_number))
     existing_record = cursor.fetchone()
 
@@ -224,13 +224,22 @@ def record_attendance(student_name, teacher_id):
         conn.commit()
         print(f"Attendance recorded for student {student_name} at {current_time}")
 
-        # Преобразование current_time в строку перед отправкой через WebSocket
-        current_time_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+        # Получаем родителей ученика
+        cursor.execute("SELECT parent_id FROM parent_student_relations WHERE student_id = %s", (student_id,))
+        parents = cursor.fetchall()
+
+        # Создаем уведомление для каждого родителя
+        for parent in parents:
+            parent_id = parent[0]
+            message = f"Ваш ребенок {student_name} посетил урок {subject_name} в {current_time_str}."
+            photo_url = f"/static/students_photo/{face_encoding}.jpg"  # Путь к фотографии ученика
+            cursor.execute("INSERT INTO notifications (parent_id, student_id, message, photo_url) VALUES (%s, %s, %s, %s)", (parent_id, student_id, message, photo_url))
+            conn.commit()
+
         socketio.emit('attendance_update', {'data': [(student_name, current_time_str)]})
 
     cursor.close()
     conn.close()
-
 
 
 @socketio.on('connect')
@@ -2125,6 +2134,22 @@ def get_attendance_stats_for_student(student_id):
     data = [row[1] for row in stats]
 
     return jsonify({'labels': labels, 'data': data})
+
+@app.route('/get_notifications_for_parents', methods=['GET'])
+@login_required
+@role_required('parent')
+def get_notifications_for_parents():
+    parent_id = current_user.parent_id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT message, created_at, photo_url FROM notifications WHERE parent_id = %s ORDER BY created_at DESC", (parent_id,))
+    notifications = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    notifications_list = [{'message': notification[0], 'created_at': notification[1].strftime('%Y-%m-%d %H:%M:%S'), 'photo_url': notification[2]} for notification in notifications]
+    return jsonify(notifications_list)
+
 
 
 if __name__ == '__main__':

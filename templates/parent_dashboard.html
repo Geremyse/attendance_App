@@ -22,7 +22,6 @@
             transform: scale(1.1);
         }
 
-        /* Анимация загрузки */
         .loading {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #3498db;
@@ -37,7 +36,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Анимация появления */
         .modal-enter {
             opacity: 0;
             transform: translateY(20px);
@@ -53,6 +51,42 @@
 <body class="bg-gray-100 p-8">
     <div class="class-header bg-blue-500 text-black p-4 rounded-lg shadow-md text-center mb-8">
         <h1 class="text-4xl font-bold">Панель родителя</h1>
+    </div>
+
+    <div class="relative">
+        <button id="notification-button" class="bg-red-500 text-white p-2 rounded-full absolute top-0 right-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.34 6 8.38 6 11v3.159c.58-.35.98-.898 1.405-1.405H15z" />
+            </svg>
+            <span id="notification-count" class="absolute -top-1 -right-1 bg-white text-red-500 rounded-full px-1 text-xs"></span>
+        </button>
+    </div>
+
+    <div id="notification-modal" class="fixed z-10 inset-0 overflow-y-auto hidden modal-enter">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-headline">
+                            Уведомления
+                        </h3>
+                        <div class="mt-2">
+                            <div class="loading mx-auto mb-4"></div>
+                            <ul id="notifications-list" class="hidden"></ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6">
+                    <button type="button" class="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base leading-6 font-medium text-white hover:bg-green-500 focus:outline-none focus:border-green-700 focus:shadow-outline-green transition ease-in-out duration-150 sm:text-sm sm:leading-5" onclick="closeNotificationModal()">
+                        Закрыть
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <form id="child-select-form" method="GET" action="{{ url_for('parent_dashboard') }}" class="mb-4">
@@ -147,6 +181,10 @@
             const modal = document.getElementById('stats-modal');
             const loadingSpinner = modal.querySelector('.loading');
             const chartCanvas = document.getElementById('attendance-chart');
+            const notificationButton = document.getElementById('notification-button');
+            const notificationModal = document.getElementById('notification-modal');
+            const notificationsList = document.getElementById('notifications-list');
+            const notificationCount = document.getElementById('notification-count');
 
             // Восстановление выбранного значения из localStorage
             const savedChildId = localStorage.getItem('selectedChildId');
@@ -221,12 +259,81 @@
                     }
                 });
             }
+
+            // Обработчик события нажатия на кнопку уведомлений
+            notificationButton.addEventListener('click', function() {
+                // Показать модальное окно с анимацией
+                notificationModal.classList.remove('hidden');
+                notificationModal.classList.add('modal-enter-active');
+
+                // Показать загрузочный спиннер
+                loadingSpinner.classList.remove('hidden');
+                notificationsList.classList.add('hidden');
+
+                fetch('/get_notifications_for_parents')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Скрыть загрузочный спиннер и показать список уведомлений
+                        loadingSpinner.classList.add('hidden');
+                        notificationsList.classList.remove('hidden');
+
+                        // Очистить список уведомлений
+                        notificationsList.innerHTML = '';
+
+                        // Добавить уведомления в список
+                        data.forEach(notification => {
+                            const li = document.createElement('li');
+                            li.classList.add('py-2', 'border-b', 'border-gray-200');
+                            li.innerHTML = `
+                                <img src="${notification.photo_url}" alt="Student Photo" class="inline-block w-20 h-20 rounded-full mr-2">
+                                <div class="inline-block">
+                                    <strong>${notification.message}</strong><br>
+                                    <small>${notification.created_at}</small>
+                                </div>
+                            `;
+                            notificationsList.appendChild(li);
+                        });
+
+                        // Обновить количество уведомлений
+                        notificationCount.textContent = data.length;
+                    })
+                    .catch(error => {
+                        console.error('Error fetching notifications:', error);
+                        loadingSpinner.classList.add('hidden');
+                    });
+            });
+
+            // Обновление количества уведомлений при загрузке страницы
+            fetch('/get_notifications_for_parents')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    notificationCount.textContent = data.length;
+                })
+                .catch(error => {
+                    console.error('Error fetching notifications:', error);
+                });
         });
 
         function closeModal() {
             const modal = document.getElementById('stats-modal');
             modal.classList.add('hidden');
             modal.classList.remove('modal-enter-active');
+        }
+
+        function closeNotificationModal() {
+            const notificationModal = document.getElementById('notification-modal');
+            notificationModal.classList.add('hidden');
+            notificationModal.classList.remove('modal-enter-active');
         }
     </script>
 </body>

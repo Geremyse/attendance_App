@@ -12,3 +12,5 @@
 
 # Помечаем все файлы в директории dist как сгенерированные
 *.py linguist-generated
+
+app/* linguist-documentation=false
